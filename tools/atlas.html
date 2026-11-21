@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Ashroot atlas</title>
+<style>
+  body { margin: 0; background: #07050c; color: #ece4d0; font: 14px ui-monospace, monospace; padding: 16px; }
+  h2 { font-size: 13px; color: #9b8fb3; margin: 14px 0 6px; letter-spacing: .1em; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  figure { margin: 0; text-align: center; }
+  figcaption { font-size: 11px; color: #6b5f82; margin-top: 4px; }
+  canvas { image-rendering: pixelated; background: #1c1724; }
+</style></head>
+<body>
+<div id="out"></div>
+<script type="module">
+import { bakeAll, SPR } from '../src/art/bank.js';
+bakeAll();
+const out = document.getElementById('out');
+const section = (title) => { const h = document.createElement('h2'); h.textContent = title; out.appendChild(h); const r = document.createElement('div'); r.className = 'row'; out.appendChild(r); return r; };
+const show = (row, spr, name, s = 5) => {
+  const f = document.createElement('figure'), c = document.createElement('canvas');
+  c.width = spr.w * s; c.height = spr.h * s;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(spr.c, 0, 0, c.width, c.height);
+  f.appendChild(c); const cap = document.createElement('figcaption'); cap.textContent = name; f.appendChild(cap); row.appendChild(f);
+};
+for (const [cls, fr] of Object.entries(SPR.hero)) {
+  const r = section('hero · ' + cls + ' · idle ×2 (500ms ping-pong) · run ×4 (contact/down/passing/up)');
+  fr.idle.forEach((s, i) => show(r, s, 'idle' + i, 6)); fr.run.forEach((s, i) => show(r, s, 'run' + i, 6));
+}
+let r = section('enemies'); for (const [k, s] of Object.entries(SPR.enemy)) show(r, s, k, 6);
+r = section('bosses'); for (const [k, s] of Object.entries(SPR.boss)) show(r, s, k, 5);
+r = section('weapons'); for (const [k, s] of Object.entries(SPR.weapon)) show(r, s, k, 5);
+r = section('icons 7x7'); for (const [k, s] of Object.entries(SPR.icon)) show(r, s, k, 6);
+</script>
+</body></html>

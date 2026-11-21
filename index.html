@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"><meta name="theme-color" content="#07050c">
+<title>Ashroot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiny5&family=Press+Start+2P&display=swap">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<canvas id="game" aria-label="Ashroot"></canvas>
+<div id="safe" aria-hidden="true"></div>
+
+<section id="menu" hidden>
+  <header class="brand">
+    <h1>ASHROOT</h1>
+    <p>Пепельное Древо · спустись в корни, верни пепел, вырасти ветвь</p>
+  </header>
+  <div class="wallet"><span class="ash-ico" aria-hidden="true"></span><b id="ash">0</b><small>пепла</small></div>
+  <aside id="panel" aria-live="polite"></aside>
+  <footer class="dock">
+    <div id="classes" role="group" aria-label="Класс"></div>
+    <button id="btn-descend">Спуститься в корни</button>
+  </footer>
+</section>
+
+<section id="cards" class="overlay" hidden>
+  <h2 id="cards-title">Выбери дар</h2>
+  <div id="cards-list"></div>
+  <div class="row">
+    <button id="btn-reroll" class="ghost" hidden>Перебросить</button>
+    <button id="btn-rest" class="ghost">Отдохнуть</button>
+  </div>
+</section>
+
+<section id="bonfire" class="overlay" hidden>
+  <p class="eyebrow">Костёр · безопасно</p>
+  <h2>Пепел ещё тёплый</h2>
+  <p id="bf-hp" class="mu"></p>
+  <div class="choices">
+    <button id="bf-rest" class="choice"><span class="key">1</span><b>Отдых</b><span>+50% HP и +1 фляга</span></button>
+    <button id="bf-sac" class="choice danger"><span class="key">2</span><b>Жертва</b><span>Без лечения. Ещё один дар, выбор из большего числа</span></button>
+  </div>
+</section>
+
+<section id="pause" class="overlay" hidden>
+  <h2>Пауза</h2>
+  <ul id="pause-boons"></ul>
+  <div class="row">
+    <button id="btn-resume">Продолжить</button>
+    <button id="btn-mute" class="ghost">Звук</button>
+    <button id="btn-abandon" class="ghost danger">Сдаться</button>
+  </div>
+</section>
+
+<section id="end" class="overlay" hidden>
+  <h2 id="end-title">Ты пал</h2>
+  <dl id="end-stats"></dl>
+  <button id="end-again">К Древу</button>
+</section>
+
+<div id="touch">
+  <div id="stickzone"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <button id="btn-pause" aria-label="Пауза">II</button>
+  <div class="pad">
+    <button class="tb flask" id="btn-flask" data-act="flask" aria-label="Фляга">✚</button>
+    <button class="tb skill" id="btn-skill" data-act="skill" aria-label="Умение">✦</button>
+    <button class="tb dodge" data-act="dodge" aria-label="Перекат">↯</button>
+    <button class="tb attack" data-act="attack" aria-label="Атака">⚔</button>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+// Damage pipeline: every hit in the game goes through here. Deterministic for the PLAYER's
+// incoming damage (no variance, no enemy crits); the player's own crits are the only dice.
+import { G } from './state.js';
+import { CLASSES } from '../data/classes.js';
+import { COUNTER_WINDOW } from '../data/enemies.js';
+import { RESONANCE } from '../data/boons.js';
+import { angDiff, angTo, dist, rand, chance, TAU, clamp } from '../engine/util.js';
+import { burst, dissolve, text, ring, shake, hitstop, slowmo, flash, banner, kick } from '../engine/fx.js';
+import { sfx } from '../engine/audio.js';
+import { SPR } from '../art/bank.js';
+import { emit } from './events.js';
+
+export const lv = (id) => G.run?.boons[id] || 0;
+export const aspectLv = (a) => G.run?.aspects[a] || 0;
+export const reso = (a, tier) => aspectLv(a) >= (tier === 1 ? 3 : 5);
+export const floorScale = () => 1 + 0.15 * ((G.run?.floor || 1) - 1);
+export const dotScale = () => (G.player?.s.dmgMul || 1) * (1 + 0.2 * ((G.run?.floor || 1) - 1));
+
+export function later(t, fn) { (G.delayed ||= []).push({ t, fn }); }
+export function updateDelayed(dt) {
+  if (!G.delayed) return;
+  for (const d of G.delayed) { d.t -= dt; if (d.t <= 0) d.fn(); }
+  G.delayed = G.delayed.filter((d) => d.t > 0);
+}
+
+const TYPE_COL = { slash: '#ece4d0', pierce: '#ece4d0', arcane: '#b88cff', fire: '#ff8f3a', bleed: '#e0404f', frost: '#93e2ff', shock: '#ffd36b', shadow: '#b88cff' };
+
+// ---------------- player -> enemy ----------------
+export function hitEnemy(e, base, o = {}) {
+  if (e.dead || e.spawnT > 0) return 0;
+  const P = G.player, s = P.s, cls = CLASSES[s.cls];
+  const type = o.type || cls.dmgType;
+  const dot = o.dot;
+  let d = base * (dot ? 1 : s.dmgMul);
+  let crit = false, counter = false, blocked = false;
+  const fx = o.fx ?? P.x, fy = o.fy ?? P.y;
+  const fromAng = angTo(e.x, e.y, fx, fy);
+
+  if (!dot) {
+    // COUNTER: hitting during the white flash at the end of a windup interrupts it
+    if (e.state === 'wind' && !e.isBoss && e.st >= e.windT - COUNTER_WINDOW) { counter = true; d *= 1.5; }
+    if (e.isBoss && e.counterable && e.wait < COUNTER_WINDOW + 0.02) { counter = true; d *= 1.3; e.counterable = false; }
+    // shield: frontal block unless guard-break / arcane / charged arrow / flank
+    if (e.def.shield && e.state !== 'stagger' && !o.shieldBreak && type !== 'arcane' && Math.abs(angDiff(e.face, fromAng)) < 1.13) {
+      blocked = true; d *= 0.12;
+    }
+    // backstab
+    if (s.backstab && Math.abs(angDiff(e.face, fromAng)) > 2.0) d *= 1 + s.backstab;
+    // flat armor punishes many small hits
+    const armor = (e.armor || 0);
+    if (armor && type !== 'arcane') d = Math.max(d * 0.15, d - armor);
+    if (lv('h_ambush') && e.hp >= e.maxHp && !e.isBoss) { d *= 1.25 + 0.25 * lv('h_ambush'); o.forceCrit = true; }
+    if (lv('h_exec') && e.hp < e.maxHp * 0.3) d *= 1.15 + 0.15 * lv('h_exec');
+    if (lv('c_wrath')) d *= 1 + Math.min(0.3, 0.03 * (G.run.roomHits || 0));
+    if (lv('p_last') && P.hp < P.s.maxHp * 0.3) d *= 2;
+    // crit
+    const cc = s.crit + (o.critBonus || 0);
+    if (!blocked && (o.forceCrit || P.nextCrit || (reso('shadow', 1) && P.shadowCrit) || chance(cc))) {
+      crit = true; d *= s.critMul * (reso('shadow', 2) ? 1.5 : 1);
+      P.nextCrit = false; P.shadowCrit = false;
+    }
+  }
+  const res = e.def.resist?.[type] || 0;
+  d *= 1 - res;
+  if (e.freeze > 0 && !dot) { d *= 1.5 + (lv('i_shatter') ? 0.3 + 0.3 * lv('i_shatter') : 0); e.freeze = 0; burst(e.x, e.y - 6, 10, '#93e2ff', 70); sfx.block(); }
+  if (e.chill > 0 && lv('i_brittle')) d *= 1 + 0.03 * lv('i_brittle') * e.chill;
+  if (e.burn > 0 && lv('f_heat')) d *= 1 + 0.12 * lv('f_heat');
+  if (e.isBoss && e.phase2Shield) d *= 0.5;
+
+  d = Math.max(1, Math.round(d));
+  e.hp -= d;
+  e.flash = dot ? 0.04 : 0.1;
+  if (!dot) {
+    e.lastHitT = G.t;
+    // knockback (mass-weighted), poise
+    const ka = angTo(fx, fy, e.x, e.y), kb = (o.knock ?? 40) / (e.def.mass || 1) * (e.isBoss ? 0.15 : 1);
+    e.kx += Math.cos(ka) * kb; e.ky += Math.sin(ka) * kb;
+    e.poise -= d * s.poiseDmg * (o.poiseMul || 1) * (counter ? 3 : 1);
+    if (counter || (e.poise <= 0 && e.state !== 'stagger')) stagger(e, counter ? 0.9 : 0.6);
+    // juice
+    const col = blocked ? '#8189a0' : crit ? '#ffd36b' : TYPE_COL[type];
+    burst(e.x, e.y - 6, crit ? 9 : 5, col, crit ? 110 : 70, { ang: ka, spread: 0.9 });
+    if (!blocked) burst(e.x, e.y - 4, 3, e.def.blood || '#8c1c33', 40, { ang: ka, spread: 0.5, grav: 60 });
+    text(e.x, e.y - 18, blocked ? 'блок' : d, col, crit);
+    if (counter) { emit('counter', { type: e.type }); text(e.x, e.y - 28, 'КОНТР', '#ffffff', true); sfx.counter(); hitstop(0.1); ring(e.x, e.y - 6, 4, 26, 0.3, '#ffffff'); flash('#ffffff', 0.15); }
+    else if (blocked) { sfx.block(); hitstop(0.03); }
+    else { sfx.hit(crit); hitstop(crit ? 0.06 : o.heavy ? 0.07 : 0.035); }
+    shake(crit || o.heavy ? 0.18 : 0.08);
+    kick(Math.cos(ka), Math.sin(ka), crit ? 2 : 1);
+    // rally: aggression heals back recently lost HP
+    if (P.rally > 0) {
+      const eff = s.rallyEff * (reso('blood', 1) && e.bleed > 0 ? 2 : 1) * (counter ? 2 : 1);
+      const heal = Math.min(P.rally, d * eff) * s.healMul;
+      if (heal > 0) { P.hp = Math.min(s.maxHp, P.hp + heal); P.rally -= heal; P.rallyGlow = 0.25; }
+    }
+    if (!o.noProc && !blocked) procs(e, d, crit, o);
+  } else {
+    if (Math.random() < 0.5) text(e.x, e.y - 16, d, TYPE_COL[type], false);
+  }
+  if (e.hp <= 0) killEnemy(e, { dirX: Math.cos(fromAng + Math.PI), dirY: Math.sin(fromAng + Math.PI) });
+  return d;
+}
+
+export function stagger(e, t) {
+  if (e.isBoss) { e.poise = e.maxPoise; e.stunT = Math.max(e.stunT || 0, t * 0.6); text(e.x, e.y - 34, 'ОШЕЛОМЛЁН', '#ffd36b', true); return; }
+  e.state = 'stagger'; e.st = 0; e.stagT = t; e.poise = e.maxPoise; e.tele = null;
+  if (e.token) { e.token = false; G.tokens = Math.max(0, (G.tokens || 0) - 1); }
+}
+
+function procs(e, d, crit, o) {
+  const P = G.player;
+  const ds = dotScale();
+  const rend = lv('b_rend') + (lv('c_venom') ? (o.venom || 1) : 0);
+  if (rend) { e.bleed = Math.min(10, e.bleed + rend); e.bleedT = 4; }
+  if (lv('f_ignite') && chance([0, 0.25, 0.4, 0.55][lv('f_ignite')])) ignite(e);
+  if (lv('i_chill') && chance([0, 0.4, 0.6, 0.8][lv('i_chill')])) chillE(e, 1);
+  if (lv('s_arc')) {
+    P.arcCount = (P.arcCount || 0) + 1;
+    if (P.arcCount % 4 === 0) chain(e, 1 + lv('s_arc') + (reso('storm', 1) ? 2 : 0), (8 + 4 * lv('s_arc')) * ds);
+  }
+  if (reso('fire', 2)) { P.sunCount = (P.sunCount || 0) + 1; if (P.sunCount % 8 === 0) nova(P.x, P.y, 55, 30 * ds, 'fire', '#ff8f3a'); }
+  if (crit) {
+    if (lv('s_overload')) nova(e.x, e.y, 26, (5 + 5 * lv('s_overload')) * ds, 'shock', '#ffd36b', e);
+    if (lv('h_echo') && chance(0.15 + 0.1 * lv('h_echo'))) later(0.12, () => { if (!e.dead) { hitEnemy(e, d * 0.5 / P.s.dmgMul, { type: 'shadow', noProc: true, knock: 10 }); ring(e.x, e.y - 6, 2, 14, 0.25, '#b88cff'); } });
+  }
+}
+
+export function ignite(e) { if (e.burn <= 0) burst(e.x, e.y - 6, 4, '#ff8f3a', 30, { grav: -40 }); e.burn = 3; }
+export function chillE(e, n) {
+  if (e.freeze > 0) return;
+  e.chill = Math.min(5, e.chill + n); e.chillT = 3;
+  if (e.chill >= 5) { e.chill = 0; e.freeze = e.isBoss ? 0.5 : 1.2; text(e.x, e.y - 24, 'ЗАМОРОЖЕН', '#93e2ff'); burst(e.x, e.y - 6, 12, '#93e2ff', 60); if (!e.isBoss) { e.state = 'stagger'; e.stagT = 1.2; e.st = 0; e.tele = null; } }
+}
+export function chain(from, n, dmg) {
+  let cur = from; const hit = new Set([from]);
+  for (let i = 0; i < n; i++) {
+    let best = null, bd = 90;
+    for (const e of G.enemies) { if (e.dead || hit.has(e) || e.spawnT > 0) continue; const dd = dist(cur.x, cur.y, e.x, e.y); if (dd < bd) { bd = dd; best = e; } }
+    if (!best) break;
+    bolt(cur.x, cur.y - 6, best.x, best.y - 6);
+    hit.add(best); const tgt = best;
+    later(0.04 * (i + 1), () => hitEnemy(tgt, dmg, { type: 'shock', noProc: true, dot: false, knock: 5, fx: cur.x, fy: cur.y }));
+    cur = best;
+  }
+}
+export function bolt(x0, y0, x1, y1) {
+  const n = Math.max(3, Math.floor(dist(x0, y0, x1, y1) / 6));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, jx = i && i < n ? rand(-3, 3) : 0, jy = i && i < n ? rand(-3, 3) : 0;
+    G.parts.push({ x: x0 + (x1 - x0) * t + jx, y: y0 + (y1 - y0) * t + jy, vx: 0, vy: 0, life: 0.18, max: 0.18, size: 1, color: i % 2 ? '#ffffff' : '#ffd36b', drag: 0, grav: 0, z: 0, vz: 0 });
+  }
+  sfx.shoot();
+}
+// player-owned instant AoE
+export function nova(x, y, r, dmg, type, color, except) {
+  ring(x, y, 2, r, 0.35, color, 2);
+  burst(x, y, 14, color, r * 2.2);
+  for (const e of G.enemies) if (!e.dead && e !== except && dist(x, y, e.x, e.y) < r + e.r) hitEnemy(e, dmg, { type, noProc: true, fx: x, fy: y, knock: 60, dot: false, poiseMul: 1.5 });
+  shake(0.15);
+}
+
+export function tickStatus(e, dt) {
+  const ds = dotScale();
+  e.statusT = (e.statusT || 0) + dt;
+  if (e.chillT > 0) { e.chillT -= dt; if (e.chillT <= 0) e.chill = 0; }
+  if (e.freeze > 0) e.freeze -= dt;
+  if (e.bleedT > 0) { e.bleedT -= dt; if (e.bleedT <= 0) e.bleed = 0; }
+  if (e.burn > 0) e.burn -= dt;
+  if (e.statusT >= 0.5) {
+    e.statusT -= 0.5;
+    if (e.bleed > 0) { hitEnemy(e, 2 * e.bleed * 0.5 * (1 + 0.4 * lv('b_hemo')) * ds, { dot: true, type: 'bleed' }); G.parts.push({ x: e.x + rand(-3, 3), y: e.y - 4, vx: 0, vy: 20, life: 0.4, max: 0.4, size: 1, color: '#e0404f', drag: 1, grav: 80, z: 0, vz: 0 }); }
+    if (e.burn > 0 && !e.dead) {
+      hitEnemy(e, 6 * 0.5 * ds, { dot: true, type: 'fire' });
+      if (reso('fire', 1)) for (const o of G.enemies) if (o !== e && !o.dead && o.burn <= 0 && dist(o.x, o.y, e.x, e.y) < 34) { ignite(o); break; }
+    }
+  }
+  if (e.burn > 0 && Math.random() < dt * 14) G.parts.push({ x: e.x + rand(-4, 4), y: e.y - rand(2, 12), vx: rand(-5, 5), vy: -rand(15, 35), life: 0.5, max: 0.5, size: 1, color: Math.random() < 0.5 ? '#ff8f3a' : '#ffd36b', drag: 1, grav: 0, z: 0, vz: 0, glow: true });
+}
+
+export function killEnemy(e, o = {}) {
+  if (e.dead) return;
+  e.dead = true;
+  const P = G.player, ds = dotScale();
+  if (e.token) { e.token = false; G.tokens = Math.max(0, (G.tokens || 0) - 1); }
+  const spr = e.isBoss ? SPR.boss[e.def.sprite] : SPR.enemy[e.type];
+  dissolve(spr, e.x, e.y, e.faceX < 0, o.dirX || 0, o.dirY || 0);
+  burst(e.x, e.y - 6, 10, '#6b5f82', 60);
+  sfx.kill(); shake(e.isBoss ? 0.8 : 0.12);
+  G.run.kills++;
+  emit('kill', { type: e.type, elite: !!e.elite, boss: !!e.isBoss });
+  // ash orbs
+  const ash = Math.round(e.def.ash * (e.elite ? 4 : 1) * (e.isBoss ? 1 : 1));
+  for (let i = 0; i < ash; i++) G.pickups.push({ kind: 'ash', x: e.x + rand(-4, 4), y: e.y + rand(-4, 4), vx: rand(-60, 60), vy: rand(-60, 60), t: 0, v: 1 });
+  if (lv('b_sacr')) { P.hp = Math.min(P.s.maxHp, P.hp + (1 + lv('b_sacr')) * P.s.healMul); }
+  if (e.burn > 0 && lv('f_pyre')) later(0.05, () => nova(e.x, e.y, 36, (10 + 10 * lv('f_pyre')) * ds, 'fire', '#ff8f3a', e));
+  if (e.bleed > 0 && reso('blood', 2)) later(0.05, () => { ring(e.x, e.y, 2, 50, 0.4, '#e0404f', 2); for (const x of G.enemies) if (!x.dead && dist(x.x, x.y, e.x, e.y) < 50) { x.bleed = Math.min(10, x.bleed + 5); x.bleedT = 4; } });
+  if (e.freezeKill || (e.freeze > 0 && reso('frost', 1))) shards(e.x, e.y, 6, 8 * ds);
+  const blast = e.def.deathBlast || (e.affix === 'volatile' ? 0.6 : 0);
+  if (blast && !e.isBoss) {
+    G.hazards.push({ kind: 'circle', x: e.x, y: e.y, r: e.def.atk?.r || 34, t: 0, wind: blast, dmg: Math.round((e.def.atk?.kind === 'explode' ? e.dmg : 16 * floorScale())), owner: 'enemy', color: '#b4ec5f', hurtsEnemies: true });
+  }
+  if (e.isBoss && G.onBossDeath) G.onBossDeath(e);
+}
+
+export function shards(x, y, n, dmg) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    G.projs.push({ owner: 'player', kind: 'shard', x, y: y - 5, vx: Math.cos(a) * 180, vy: Math.sin(a) * 180, r: 2, dmg, type: 'frost', life: 0.5, pierce: 0, hit: new Set(), color: '#93e2ff', noProc: true });
+  }
+}
+
+// ---------------- enemy -> player ----------------
+export function hurtPlayer(dmg, sx, sy, o = {}) {
+  const P = G.player;
+  if (!P || P.dead || P.state === 'fall') return false;
+  if (P.iframe > 0) {
+    if (P.state === 'dodge' && P.dodgeAge < P.s.perfectWindow && !P.perfectDone) perfectDodge();
+    return false;
+  }
+  if (P.inv > 0 && !o.ignoreInv) return false;
+  if (G.godmode) { P.inv = 0.5; G.run.hitsTaken++; return false; }
+  const s = P.s;
+  if (P.arcaneUp) { P.arcaneUp = false; ring(P.x, P.y - 6, 4, 22, 0.4, '#b88cff', 2); text(P.x, P.y - 22, 'щит', '#b88cff'); sfx.block(); P.inv = 0.4; return false; }
+  dmg = dmg * s.dmgTaken * (P.hyperNow ? 1 - s.hyperArmor : 1);
+  if (P.frostShield > 0) { const ab = Math.min(P.frostShield, dmg); P.frostShield -= ab; dmg -= ab; burst(P.x, P.y - 6, 6, '#93e2ff', 50); if (dmg <= 0.5) { P.inv = 0.3; return false; } }
+  dmg = Math.max(1, Math.round(dmg));
+  P.hp -= dmg;
+  P.rally = Math.min(dmg * 0.9 + P.rally * 0.5, s.maxHp); P.rallyT = s.rallyTime;
+  G.run.roomHits = (G.run.roomHits || 0) + 1;
+  G.run.hitsTaken++;
+  P.inv = 0.5;
+  P.flash = 0.12;
+  if (lv('i_armor') && (P.frostCd || 0) <= 0) { P.frostShield = 5 + 5 * lv('i_armor'); P.frostCd = 8; }
+  G.vign = Math.min(1, G.vign + 0.6);
+  text(P.x, P.y - 20, dmg, '#e0404f', true);
+  burst(P.x, P.y - 6, 8, '#e0404f', 70, { grav: 60 });
+  sfx.hurt(); shake(0.35); hitstop(0.08);
+  if (!P.hyperNow && !o.noStagger) {
+    const a = angTo(sx, sy, P.x, P.y);
+    P.vx = Math.cos(a) * 120; P.vy = Math.sin(a) * 120;
+    P.setState('hurt');
+  }
+  if (P.hp <= 0) {
+    if (s.lastStand && !G.run.lastStandUsed) { G.run.lastStandUsed = true; P.hp = 1; banner('ВТОРОЕ ДЫХАНИЕ', '', '#ffd36b', 1.6); slowmo(0.8, 0.2); P.inv = 1.2; return true; }
+    if (s.unstoppable && !G.run.unstoppableUsed) { G.run.unstoppableUsed = true; P.hp = 1; banner('НЕУДЕРЖИМЫЙ', '', '#ff6a3d', 1.6); slowmo(0.8, 0.2); P.inv = 1.2; return true; }
+    P.die();
+  }
+  return true;
+}
+
+export function perfectDodge() {
+  const P = G.player, s = P.s;
+  P.perfectDone = true;
+  P.sta = Math.min(s.maxSta, P.sta + s.dodgeCost);
+  P.nextCrit = true;
+  G.run.perfects++;
+  emit('perfect', {});
+  slowmo(s.slowmo, 0.25);
+  flash('#ffffff', 0.18);
+  ring(P.x, P.y - 6, 3, 30, 0.45, '#ffffff', 1);
+  text(P.x, P.y - 26, 'ИДЕАЛЬНО', '#ffffff', true);
+  sfx.perfect();
+  const ds = dotScale();
+  if (lv('i_nova')) { const R = 40 + 15 * lv('i_nova'); ring(P.x, P.y, 2, R, 0.4, '#93e2ff', 2); for (const e of G.enemies) if (!e.dead && dist(P.x, P.y, e.x, e.y) < R) chillE(e, 5); }
+  if (reso('storm', 2)) for (const e of G.enemies) if (!e.dead && e.spawnT <= 0) { bolt(e.x, e.y - 80, e.x, e.y - 4); hitEnemy(e, 30 * ds, { type: 'shock', noProc: true, fx: e.x, fy: e.y - 10 }); }
+}
+
+// enemy-owned AoE resolution
+export function enemyBlast(x, y, r, dmg, color, hurtsEnemies) {
+  ring(x, y, 2, r, 0.3, color, 2);
+  burst(x, y, 18, color, r * 2.5, { glow: true });
+  sfx.boom(); shake(0.25);
+  const P = G.player;
+  if (P && dist(x, y, P.x, P.y) < r + 3) hurtPlayer(dmg, x, y);
+  if (hurtsEnemies) for (const e of G.enemies) if (!e.dead && !e.isBoss && dist(x, y, e.x, e.y) < r) { e.hp -= dmg; e.flash = 0.1; if (e.hp <= 0) killEnemy(e); }
+}
+export { RESONANCE, clamp };
