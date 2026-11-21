@@ -1,7 +1,10 @@
 // DOM overlays: reward cards, bonfire, pause, death / victory.
 import { G } from '../game/state.js';
 import { ASPECTS, BOON, RESONANCE } from '../data/boons.js';
-import { CLASSES } from '../data/classes.js';
+import { WEAPONS } from '../data/weapons.js';
+import { showGear, initGear } from './inventory.js';
+import { recompute } from '../game/run.js';
+import { renderPanel } from './menu.js';
 import { FLOORS } from '../data/floors.js';
 import { SPR } from '../art/bank.js';
 import { toDataURL } from '../engine/sprite.js';
@@ -31,10 +34,10 @@ function cardHTML(b, i) {
   const res = b.aspect !== 'neutral' && b.aspect !== 'pact'
     ? `<p class="reso">${A.name} ${have}→${have + 1}${have + 1 === 3 ? ` · <b>Резонанс I</b>: ${RESONANCE[b.aspect][0]}` : have + 1 === 5 ? ` · <b>Резонанс II</b>: ${RESONANCE[b.aspect][1]}` : ` · до резонанса ${have < 3 ? 3 - have - 1 : 5 - have - 1}`}</p>` : '';
   const lvl = (b.max || 3) > 1 ? `<span class="lvl">${cur ? ROMAN[cur] + ' → ' : ''}${ROMAN[cur + 1]}</span>` : '';
-  return `<button class="card ${b.pact ? 'pact' : ''} ${b.cls ? 'clsboon' : ''}" data-i="${i}" style="--c:${A.color};--d:${i * 70}ms">
+  return `<button class="card ${b.pact ? 'pact' : ''} ${b.weapon ? 'clsboon' : ''}" data-i="${i}" style="--c:${A.color};--d:${i * 70}ms">
     <span class="key">${i + 1}</span>
     <img alt="" src="${iconURL(A.icon)}">
-    <span class="asp">${b.pact ? 'Пакт · риск' : b.cls ? `${A.name} · ${CLASSES[b.cls].name}` : A.name}</span>
+    <span class="asp">${b.pact ? 'Пакт · риск' : b.weapon ? `${A.name} · ${WEAPONS[b.weapon].name}` : A.name}</span>
     <h3>${b.name} ${lvl}</h3>
     <p class="d">${b.desc(cur + 1)}</p>
     ${res}
@@ -80,8 +83,9 @@ export const ui = {
     const done = () => { closeOverlay('bonfire'); { openExits(G.room); sfx.door(); } };
     $('bf-rest').onclick = () => {
       P.hp = Math.min(P.s.maxHp, P.hp + P.s.maxHp * 0.5); P.flasks = Math.min(P.s.flasks, P.flasks + 1);
-      sfx.flask(); text(P.x, P.y - 26, '+50% HP, +1 фляга', '#b4ec5f', true); done();
+      sfx.flask(); text(P.x, P.y - 26, '+50% HP, +1 нектар', '#b4ec5f', true); done();
     };
+    $('bf-forge').onclick = () => { $('bonfire').hidden = true; showGear({ forge: true, onClose: () => { $('bonfire').hidden = false; G.paused = true; document.body.classList.add('overlay'); } }); };
     $('bf-sac').onclick = () => {
       closeOverlay('bonfire');
       ui.showCards({ title: 'Жертва: дар без отдыха', offer: rollOffer(P.s.cards + 1), canRest: false, picksLeft: 1, onDone: () => { openExits(G.room); sfx.door(); } });
@@ -95,14 +99,14 @@ export const ui = {
     if (win) finishVictory();
     const el = $('end');
     el.classList.toggle('win', win);
-    $('end-title').textContent = win ? 'Древо исцелено' : 'Ты пал';
+    $('end-title').textContent = win ? 'Сад Гесперид спасён' : 'Ты пал';
     const mins = Math.floor(r.time / 60), secs = Math.floor(r.time % 60);
     const lines = [
       ['Глубина', `${F.sub} · ${F.name}`], ['Время', `${mins}:${String(secs).padStart(2, '0')}`], ['Убито', r.kills],
       ['Идеальных перекатов', r.perfects], ['Пропущено ударов', r.hitsTaken], ['Даров', r.picks],
       ['Пепел в древо', win ? r.banked : `${r.banked} + ${r.deathKeep || 0}`],
     ];
-    if (!win && save.echo) lines.push(['Отголосок', `${save.echo.ash} пепла ждут на глубине ${save.echo.floor}`]);
+    if (!win && save.echo) lines.push(['Твоя тень', `${save.echo.ash} пепла ждут на глубине ${save.echo.floor}`]);
     $('end-stats').innerHTML = lines.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     openOverlay('end');
     setDrone(0);
@@ -111,7 +115,7 @@ export const ui = {
   },
 
   togglePause() {
-    if (G.mode !== 'game' || !$('cards').hidden || !$('bonfire').hidden || !$('end').hidden) return;
+    if (G.mode !== 'game' || !$('cards').hidden || !$('bonfire').hidden || !$('end').hidden || !$('gear').hidden || G.real - (G.gearClosedAt || -9) < 0.25) return;
     if ($('pause').hidden) {
       openOverlay('pause');
       const r = G.run;
@@ -127,5 +131,9 @@ export function initScreens() {
   $('btn-abandon').onclick = () => { closeOverlay('pause'); G.player.hp = 0; G.player.die(); };
   $('btn-mute').onclick = () => { const s = save(); s.muted = !s.muted; setMuted(s.muted); writeSave(s); $('btn-mute').textContent = s.muted ? 'Звук: выкл' : 'Звук: вкл'; };
   $('btn-pause').onclick = () => ui.togglePause();
+  $('btn-gear-pause').onclick = () => { closeOverlay('pause'); showGear({ forge: false, onClose: () => {} }); };
+  initGear();
+  ui.showGear = showGear;
+  G.onGearChanged = () => { G.gearClosedAt = G.real; if (G.run && G.player) recompute(); else if (G.mode === 'menu') renderPanel(); };
   G.ui = ui;
 }

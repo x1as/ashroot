@@ -3,65 +3,28 @@
 // x/X = class accent (light/dark), L/B = leg/boot colour remapped per class.
 // Facing: everything faces RIGHT; the renderer flips.
 
-// ---------- HERO BODIES (frame one: idle contact pose) ----------
-export const BODY = {
-  rogue: [
-    '....kddk....',
-    '...kdmmdk...',
-    '..kdmllmdk..',
-    '..kmkkkkmk..',
-    '..kmkkxkxk..',
-    '..kdkkkkdk..',
-    '..XxxxxxxX..',
-    '.dXxXxxXxXd.',
-    '.bdmmddmmdb.',
-    '.bdmmddmmdb.',
-    '..dmdNNdmd..',
-    '..ddddddd...',
-  ],
-  warrior: [
-    '...TTTTT....',
-    '..TSssssT...',
-    '..TSsssST...',
-    '..TkkxkxT...',
-    '..TSSSSST...',
-    '.XxTTTTTxX..',
-    'TSSsTTTsSST.',
-    'TSsSSTSSsST.',
-    '.TSSTTTSST..',
-    '.bTnNyNnTb..',
-    '..TSSTSST...',
-    '..TTT.TTT...',
-  ],
-  mage: [
-    '......xX....',
-    '.....xXX....',
-    '....dxXXd...',
-    '...dmmmmmd..',
-    '.ddmmmmmmmdd',
-    '...kwwwwk...',
-    '...kwkwkw...',
-    '...dAaaaAd..',
-    '..dmmaammmd.',
-    '.bdmmammmmdb',
-    '..dmmammmmd.',
-    '..ddmmmmmdd.',
-  ],
-  archer: [
-    '....nnnn....',
-    '...nNNNNn...',
-    '..nNnnnnNn..',
-    '..nNkwwkNn..',
-    '..nNwkwkNn..',
-    '...Nwwwwn...',
-    '..xxNNNNxx..',
-    '.xXnnnnnnXx.',
-    '.bXnNNNnXb..',
-    '..XnnNnnX...',
-    '..NnNyNnN...',
-    '..NNNNNNN...',
-  ],
+// ---------- THE HERO (one character; look follows the equipped armour weight) ----------
+// head rows 0-5 by helm weight, torso rows 6-11 by chest weight, legs by boots weight.
+export const HEAD = {
+  none: ['....kddk....', '...kdmmdk...', '..kdwwwwdk..', '..kdwkwkdk..', '..kdwwwwdk..', '...kdwwdk...'],
+  light: ['....kddk....', '...kdmmdk...', '..kdmllmdk..', '..kmkkkkmk..', '..kmkkxkxk..', '..kdkkkkdk..'],
+  medium: ['....TSST....', '...TSssST...', '..TSwwwwST..', '..TSwkwkST..', '..TSwwwwST..', '...TSwwST...'],
+  heavy: ['...TTTTT....', '..TSssssT...', '..TSsssST...', '..TkkxkxT...', '..TSSSSST...', '...TTTTT....'],
 };
+export const TORSO = {
+  none: ['..XxxxxxxX..', '.dXxXxxXxXd.', '.bdmmddmmdb.', '.bdmmddmmdb.', '..dmdNNdmd..', '..ddddddd...'],
+  light: ['..XxxxxxxX..', '.nXnnnnnnXn.', '.bnNnnnnNnb.', '.bnNNnnNNnb.', '..nNnyynNn..', '..NNNNNNN...'],
+  medium: ['..XxxxxxxX..', '.TXSsSsSsXT.', '.bTSsSsSsTb.', '.bTsSsSsSTb.', '..TSnyynST..', '..TTTTTTT...'],
+  heavy: ['.XxTTTTTxX..', 'TSSsTTTsSST.', 'TSsSSTSSsST.', '.TSSTTTSST..', '.bTnNyNnTb..', '..TSSTSST...'],
+};
+export const LEGMAP = {
+  none: { L: 'd', B: 'k' }, light: { L: 'N', B: 'k' }, medium: { L: 'T', B: 'k' }, heavy: { L: 'S', B: 'T' },
+};
+// the Ice Knight enemy reuses the old warrior body
+export const KNIGHT_BODY = [
+  '...TTTTT....', '..TSssssT...', '..TSsssST...', '..TkkxkxT...', '..TSSSSST...', '.XxTTTTTxX..',
+  'TSSsTTTsSST.', 'TSsSSTSSsST.', '.TSSTTTSST..', '.bTnNyNnTb..', '..TSSTSST...', '..TTT.TTT...',
+];
 
 // 4-frame cycle (contact, down, passing, up) + stand — per pixel-art-animator.
 export const LEGS = {
@@ -73,24 +36,11 @@ export const LEGS = {
     ['...LL..LL...', '..LL....LL..', '.BB......BB.'],
   ],
 };
-export const ROBE = {
-  stand: ['..dmmmmmmd..', '..dmmmmmmmd.', '...kk...kk..'],
-  run: [
-    ['..dmmmmmmmd.', '.dmmmmmmmd..', '..kk....kk..'],
-    ['..dmmmmmmd..', '..dmmmmmmd..', '...kk..kk...'],
-    ['...dmmmmmd..', '...dmmmmmmd.', '....kk.kk...'],
-    ['..dmmmmmmd..', '.dmmmmmmmd..', '..kk.....kk.'],
-  ],
-};
-export const LEGMAP = {
-  rogue: { L: 'd', B: 'k' },
-  warrior: { L: 'T', B: 'k' },
-  mage: { L: 'm', B: 'k' },
-  archer: { L: 'N', B: 'k' },
-};
-
 // ---------- WEAPONS (pivot = left-middle) ----------
 export const WEAPON = {
+  sword: ['..Y..........', 'NNYssssssssw.', '..Y..........'],
+  // olive-wood club of Heracles: knotted, thick at the head
+  club: ['..........nNNn..', 'nnnnnnnnnnNnnNn.', 'NnNnNnnNnnnNnnNn', '..........nNnNn.', '...........nn...'],
   dagger: ['..Y.....', 'NNYsssws', '..Y.....'],
   greatsword: [
     '...Y..............',
@@ -347,4 +297,16 @@ export const ICON = {
   orb: ['..AAA..', '.AaaaA.', 'AafaaaA', 'AaaaaaA', 'AaaaaaA', '.AaaaA.', '..AAA..'],
   dagger: ['......s', '.....s.', '....s..', '...s...', '.ys....', '..y....', '.N.....'],
   hammer: ['SSS....', 'SsS....', 'SSSn...', '...n...', '....n..', '.....n.', '......N'],
+  great: ['......s', '.....sw', '....sw.', '...sw..', 'yysw...', '.Ny....', 'N.y....'],
+  club: ['....nNn', '...nNnN', '..nNnn.', '.nNn...', 'nNn....', 'Nn.....', 'N......'],
+  helm: ['..SSS..', '.SsssS.', 'SsSSSsS', 'SkkkkkS', 'SSkSkSS', 'S.....S', '.......'],
+  chest: ['S.....S', 'SSsSsSS', '.SsSsS.', '.SSySS.', '.SsSsS.', '.SSSSS.', '.......'],
+  glove: ['.n.n.n.', '.n.n.n.', '.nnnnnn', '.nNNNnn', '.nNNNn.', '..nNn..', '..SSS..'],
+  amulet: ['.N...N.', '..N.N..', '...N...', '..yyy..', '.yfffy.', '..yfy..', '...y...'],
+  ring: ['.......', '..yyy..', '.y.r.y.', 'y.....y', 'y.....y', '.y...y.', '..yyy..'],
+  relic: ['...g...', '..gGg..', '.nnnnn.', 'nNnNnNn', 'nnNnNnn', '.nnnnn.', '..nnn..'],
+  bone: ['.......', '.w...w.', 'wbw.wbw', '.wbbbw.', 'wbw.wbw', '.w...w.', '.......'],
+  resin: ['...y...', '..yYy..', '.yYyYy.', '.YyyyY.', '.yYyYy.', '..YYY..', '.......'],
+  shard: ['...f...', '..fwf..', '..fFf..', '.fFwFf.', '..fFf..', '..fFf..', '...F...'],
+  heartwood: ['..N.N..', '.NrrrN.', 'NrhrrrN', 'NrrrrrN', '.NrrrN.', '..NrN..', '...N...'],
 };

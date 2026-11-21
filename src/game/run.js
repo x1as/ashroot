@@ -3,7 +3,7 @@ import { G, resetWorld } from './state.js';
 import { FLOORS, ROOM_PLAN, composeRoom } from '../data/floors.js';
 import { BOONS, BOON, ASPECTS } from '../data/boons.js';
 import { computeStats } from './stats.js';
-import { createPlayer } from './player.js';
+import { createPlayer, applyLoadout, gearLook } from './player.js';
 import { createEnemy } from './enemy.js';
 import { createBoss } from './boss.js';
 import { makeRoom, spawnPoint, openExits, updateFlow, TS } from './world.js';
@@ -17,16 +17,19 @@ import { emit } from './events.js';
 
 const DRONES = [55, 49, 41, 61, 36.7];
 
-export function startRun(cls) {
+export const runStats = (boons = {}) => computeStats(G.save.nodes, G.save.inv.equip, G.save.inv.items, boons);
+
+export function startRun() {
   const save = G.save;
-  const stats = computeStats(cls, save.nodes, {});
+  const stats = runStats();
   G.run = {
-    cls, floor: 1, roomIdx: 0, boons: {}, aspects: {}, ash: 0, banked: 0, kills: 0, hitsTaken: 0, perfects: 0,
+    wk: stats.wk, floor: 1, roomIdx: 0, boons: {}, aspects: { ...stats.gearAspects }, ash: 0, banked: 0, kills: 0, hitsTaken: 0, perfects: 0,
     time: 0, rerolls: stats.rerolls, cursed: false, roomHits: 0, lastStandUsed: false, unstoppableUsed: false, picks: 0,
+    mats: {}, items: [],
   };
-  G.player = createPlayer(cls, stats, 0, 0);
-  save.stats.runs++; save.cls = cls; writeSave(save);
-  emit('runStart', { cls });
+  G.player = createPlayer(stats, gearLook(save.inv), 0, 0);
+  save.stats.runs++; writeSave(save);
+  emit('runStart', { weapon: stats.wk });
   for (const id of stats.startWith) addBoon(id, true);
   if (stats.startBoon) addBoon(rollOffer(1)[0].id, true);
   G.mode = 'game';
@@ -36,7 +39,13 @@ export function startRun(cls) {
 export function recompute() {
   const P = G.player, r = G.run;
   const oldMax = P.s.maxHp;
-  P.s = computeStats(r.cls, G.save.nodes, r.boons);
+  const s = runStats(r.boons);
+  applyLoadout(P, s, gearLook(G.save.inv));
+  r.wk = s.wk;
+  // aspects = infused gear + boon levels (re-derived, so swapping gear mid-run stays consistent)
+  const asp = { ...s.gearAspects };
+  for (const id in r.boons) { const b = BOON[id]; if (b.aspect !== 'neutral' && b.aspect !== 'pact') asp[b.aspect] = (asp[b.aspect] || 0) + r.boons[id]; }
+  r.aspects = asp;
   if (P.s.maxHp > oldMax) P.hp += P.s.maxHp - oldMax;
   P.hp = Math.min(P.hp, P.s.maxHp);
   P.sta = Math.min(P.sta, P.s.maxSta);
@@ -46,7 +55,6 @@ export function addBoon(id, silent) {
   const r = G.run, b = BOON[id];
   const before = r.aspects[b.aspect] || 0;
   r.boons[id] = (r.boons[id] || 0) + 1;
-  if (b.aspect !== 'neutral' && b.aspect !== 'pact') r.aspects[b.aspect] = before + 1;
   emit('boonPick', { id, aspect: b.aspect });
   r.picks++;
   const P = G.player;
@@ -56,9 +64,10 @@ export function addBoon(id, silent) {
   if (!silent) {
     sfx.pick();
     const A = ASPECTS[b.aspect];
-    if ((before < 3 && after >= 3) || (before < 5 && after >= 5)) {
-      emit('resonance', { aspect: b.aspect, tier: after >= 5 ? 2 : 1 });
-      banner(`Резонанс ${after >= 5 ? 'II' : 'I'}: ${A.name}`, (after >= 5 ? RESO_TXT[b.aspect][1] : RESO_TXT[b.aspect][0]), A.color, 3);
+    const sh = G.player.s.resoShift || 0, t1 = 3 - sh, t2 = 5 - sh;
+    if ((before < t1 && after >= t1) || (before < t2 && after >= t2)) {
+      emit('resonance', { aspect: b.aspect, tier: after >= t2 ? 2 : 1 });
+      banner(`Резонанс ${after >= t2 ? 'II' : 'I'}: ${A.name}`, (after >= t2 ? RESO_TXT[b.aspect][1] : RESO_TXT[b.aspect][0]), A.color, 3);
       flash(A.color, 0.3); slowmo(0.4, 0.4);
     }
   }
@@ -68,7 +77,7 @@ import { RESONANCE as RESO_TXT } from '../data/boons.js';
 export function rollOffer(n) {
   const r = G.run;
   const allowPact = !(r.floor === 1 && r.roomIdx < 2);
-  const pool = BOONS.filter((b) => (!b.cls || b.cls === r.cls) && (r.boons[b.id] || 0) < (b.max || 3) && (allowPact || !b.pact));
+  const pool = BOONS.filter((b) => (!b.weapon || b.weapon === r.wk) && (r.boons[b.id] || 0) < (b.max || 3) && (allowPact || !b.pact));
   const out = [];
   let pacts = 0;
   while (out.length < n && pool.length) {
@@ -76,7 +85,7 @@ export function rollOffer(n) {
       let w = 1;
       if ((r.aspects[x.aspect] || 0) > 0) w += 1.4;           // steer toward synergy
       if (x.pact) w = pacts ? 0 : 0.45;
-      if (x.cls) w = 0.7;
+      if (x.weapon) w = 0.8;
       if (x.aspect === 'neutral') w = 0.8;
       return w;
     });
@@ -117,7 +126,7 @@ export function enterRoom(idx) {
   }
   // souls-like echo: your lost ash waits where you fell (first room of that floor)
   const echo = G.save.echo;
-  if (echo && echo.floor === r.floor && idx === 0) R.echo = { x: R.w * TS / 2 + 30, y: R.h * TS / 2, ash: echo.ash, cls: echo.cls };
+  if (echo && echo.floor === r.floor && idx === 0) R.echo = { x: R.w * TS / 2 + 30, y: R.h * TS / 2, ash: echo.ash };
   banner(idx === 0 ? F.name : plan.name, idx === 0 ? `${F.sub} · ${plan.name}` : `${F.sub} · зал ${idx + 1}`, F.theme.accent, 1.8);
   updateFlow(R, P.x, P.y);
 }
@@ -150,7 +159,7 @@ export function updateRoom(dt) {
   // echo pickup
   if (R.echo && Math.hypot(P.x - R.echo.x, P.y - R.echo.y) < 10) {
     r.ash += R.echo.ash; text(P.x, P.y - 26, `+${R.echo.ash} пепла`, '#ece4d0', true);
-    banner('Отголосок поглощён', `вернул ${R.echo.ash} пепла`, '#ece4d0', 1.8);
+    banner('Тень поглощена', `ты вернул ${R.echo.ash} пепла`, '#ece4d0', 1.8);
     ring(R.echo.x, R.echo.y, 3, 40, 0.6, '#ece4d0', 2); sfx.pick();
     emit('echo', { ash: R.echo.ash });
     G.save.echo = null; writeSave(G.save); R.echo = null;
@@ -178,7 +187,7 @@ function showReward() {
   const n = G.player.s.cards;
   const double = R.plan === 'arena' && r.cursed;
   G.ui.showCards({
-    title: double ? 'Дар проклятой тропы · 1 из 2' : 'Выбери дар',
+    title: double ? 'Дар Немезиды · 1 из 2' : 'Дар богов',
     offer: rollOffer(n), canRest: true, picksLeft: double ? 2 : 1,
     onDone: () => { openExits(R); sfx.door(); },
   });
@@ -187,9 +196,9 @@ function showReward() {
 export function onBossDeath(b) {
   const r = G.run, P = G.player;
   slowmo(1.4, 0.2); flash('#ffffff', 0.5); shake(1);
-  banner(r.floor === 5 ? 'ДРЕВО ИСЦЕЛЕНО' : 'УЗЕЛ РАЗРУБЛЕН', b.def.name, b.def.color, 3);
+  banner(r.floor === 5 ? 'ТРИНАДЦАТЫЙ ПОДВИГ' : 'ПОДВИГ СОВЕРШЁН', b.def.myth || b.def.name, b.def.color, 3.4);
   // bank everything: the boss is the souls-like checkpoint
-  emit('bossKill', { id: b.type, floor: r.floor, time: r.time, hitsTaken: G.run.roomHits || 0, cls: r.cls });
+  emit('bossKill', { id: b.type, floor: r.floor, time: r.time, hitsTaken: G.run.roomHits || 0, weapon: r.wk });
   G.save.ash += r.ash; G.save.stats.ashEarned += r.ash; r.banked += r.ash; r.ash = 0;
   G.save.stats.bestFloor = Math.max(G.save.stats.bestFloor, r.floor);
   writeSave(G.save);
@@ -200,7 +209,7 @@ export function onBossDeath(b) {
   R.state.cleared = true; R.state.rewardShown = true;
   later(1.2, () => {
     if (r.floor === 5) { G.ui.showEnd(true); return; }
-    G.ui.showCards({ title: 'Дар узла', offer: rollOffer(P.s.cards), canRest: false, picksLeft: 1, onDone: () => { openExits(R); sfx.door(); } });
+    G.ui.showCards({ title: 'Дар за подвиг', offer: rollOffer(P.s.cards), canRest: false, picksLeft: 1, onDone: () => { openExits(R); sfx.door(); } });
   });
 }
 
@@ -208,6 +217,7 @@ export function takeExit(ex) {
   const r = G.run;
   if (G.room.plan === 'fork') r.cursed = ex.kind === 'cursed';
   input.clear();
+  writeSave(G.save); // loot picked up in the room is kept
   G.transition = { t: 0, dir: 1, then: () => {
     if (G.room.plan === 'boss') {
       r.floor++; r.cursed = false;
@@ -221,9 +231,9 @@ export function onPlayerDeath() {
   const r = G.run, save = G.save;
   slowmo(1.5, 0.15); sfx.death(); shake(0.6);
   // half the unbanked ash settles into the tree, half becomes your echo on this floor
-  const keep = Math.floor(r.ash * 0.5);
+  const keep = Math.floor(r.ash * G.player.s.deathKeep);
   save.ash += keep;
-  save.echo = r.ash - keep > 0 ? { floor: r.floor, ash: r.ash - keep, cls: r.cls } : save.echo;
+  save.echo = r.ash - keep > 0 ? { floor: r.floor, ash: r.ash - keep } : save.echo;
   save.stats.deaths++; save.stats.kills += r.kills;
   save.stats.bestFloor = Math.max(save.stats.bestFloor, r.floor);
   r.deathKeep = keep; save.stats.ashEarned += keep;
@@ -240,5 +250,5 @@ export function finishVictory() {
 }
 function runSummary(win) {
   const r = G.run;
-  return { win, cls: r.cls, floor: r.floor, time: r.time, kills: r.kills, hitsTaken: r.hitsTaken, perfects: r.perfects, picks: r.picks, pacts: Object.keys(r.boons).filter((id) => id.startsWith('p_')).length };
+  return { win, weapon: r.wk, floor: r.floor, time: r.time, kills: r.kills, hitsTaken: r.hitsTaken, perfects: r.perfects, picks: r.picks, pacts: Object.keys(r.boons).filter((id) => id.startsWith('p_')).length };
 }

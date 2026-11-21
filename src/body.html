@@ -4,12 +4,12 @@
 <section id="menu" hidden>
   <header class="brand">
     <h1>ASHROOT</h1>
-    <p>Пепельное Древо · спустись в корни, верни пепел, вырасти ветвь</p>
+    <p>Тринадцатый подвиг Геракла · спустись по корням Древа Гесперид в Тартар</p>
   </header>
   <div class="wallet"><span class="ash-ico" aria-hidden="true"></span><b id="ash">0</b><small>пепла</small></div>
   <aside id="panel" aria-live="polite"></aside>
   <footer class="dock">
-    <div id="classes" role="group" aria-label="Класс"></div>
+    <button id="btn-gear" class="gearbtn"><img alt="" src=""><span>Снаряжение</span></button>
     <button id="btn-descend">Спуститься в корни</button>
   </footer>
 </section>
@@ -24,13 +24,14 @@
 </section>
 
 <section id="bonfire" class="overlay" hidden>
-  <p class="eyebrow">Костёр · безопасно</p>
-  <h2>Пепел ещё тёплый</h2>
+  <p class="eyebrow">Безопасно · богиня очага не пускает сюда чудовищ</p>
+  <h2>Очаг Гестии</h2>
   <p id="bf-hp" class="mu"></p>
   <div class="choices">
-    <button id="bf-rest" class="choice"><span class="key">1</span><b>Отдых</b><span>+50% HP и +1 фляга</span></button>
-    <button id="bf-sac" class="choice danger"><span class="key">2</span><b>Жертва</b><span>Без лечения. Ещё один дар, выбор из большего числа</span></button>
+    <button id="bf-rest" class="choice"><span class="key">1</span><b>Отдых</b><span>+50% HP и +1 чаша нектара</span></button>
+    <button id="bf-sac" class="choice danger"><span class="key">2</span><b>Жертва богам</b><span>Без лечения. Ещё один дар, выбор из большего числа</span></button>
   </div>
+  <button id="bf-forge" class="ghost">Горн у очага: улучшить и заточить снаряжение</button>
 </section>
 
 <section id="pause" class="overlay" hidden>
@@ -38,6 +39,7 @@
   <ul id="pause-boons"></ul>
   <div class="row">
     <button id="btn-resume">Продолжить</button>
+    <button id="btn-gear-pause" class="ghost">Снаряжение</button>
     <button id="btn-mute" class="ghost">Звук</button>
     <button id="btn-abandon" class="ghost danger">Сдаться</button>
   </div>
@@ -46,7 +48,27 @@
 <section id="end" class="overlay" hidden>
   <h2 id="end-title">Ты пал</h2>
   <dl id="end-stats"></dl>
-  <button id="end-again">К Древу</button>
+  <button id="end-again">Восстать из пепла</button>
+</section>
+
+<section id="gear" class="overlay gear" hidden>
+  <header class="gear-head">
+    <h2 id="gear-title">Снаряжение</h2>
+    <div id="gear-res" class="gear-res"></div>
+    <button id="gear-close" class="ghost">Закрыть</button>
+  </header>
+  <div class="gear-body">
+    <div class="doll">
+      <canvas id="gear-hero" width="120" height="150"></canvas>
+      <div id="gear-slots" class="slots"></div>
+      <dl id="gear-stats" class="stats gstats"></dl>
+    </div>
+    <div class="bag">
+      <div id="gear-filters" class="filters"></div>
+      <div id="gear-grid" class="grid"></div>
+    </div>
+    <aside id="gear-detail" class="detail"></aside>
+  </div>
 </section>
 
 <div id="touch">

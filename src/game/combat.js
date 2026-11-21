@@ -1,7 +1,8 @@
 // Damage pipeline: every hit in the game goes through here. Deterministic for the PLAYER's
 // incoming damage (no variance, no enemy crits); the player's own crits are the only dice.
 import { G } from './state.js';
-import { CLASSES } from '../data/classes.js';
+import { BOSS_ELEMENT } from '../data/items.js';
+import { rollLoot } from './items.js';
 import { COUNTER_WINDOW } from '../data/enemies.js';
 import { RESONANCE } from '../data/boons.js';
 import { angDiff, angTo, dist, rand, chance, TAU, clamp } from '../engine/util.js';
@@ -12,7 +13,7 @@ import { emit } from './events.js';
 
 export const lv = (id) => G.run?.boons[id] || 0;
 export const aspectLv = (a) => G.run?.aspects[a] || 0;
-export const reso = (a, tier) => aspectLv(a) >= (tier === 1 ? 3 : 5);
+export const reso = (a, tier) => aspectLv(a) >= (tier === 1 ? 3 : 5) - (G.player?.s.resoShift || 0);
 export const floorScale = () => 1 + 0.15 * ((G.run?.floor || 1) - 1);
 export const dotScale = () => (G.player?.s.dmgMul || 1) * (1 + 0.2 * ((G.run?.floor || 1) - 1));
 
@@ -28,7 +29,7 @@ const TYPE_COL = { slash: '#ece4d0', pierce: '#ece4d0', arcane: '#b88cff', fire:
 // ---------------- player -> enemy ----------------
 export function hitEnemy(e, base, o = {}) {
   if (e.dead || e.spawnT > 0) return 0;
-  const P = G.player, s = P.s, cls = CLASSES[s.cls];
+  const P = G.player, s = P.s, cls = P.C;
   const type = o.type || cls.dmgType;
   const dot = o.dot;
   let d = base * (dot ? 1 : s.dmgMul);
@@ -38,8 +39,9 @@ export function hitEnemy(e, base, o = {}) {
 
   if (!dot) {
     // COUNTER: hitting during the white flash at the end of a windup interrupts it
-    if (e.state === 'wind' && !e.isBoss && e.st >= e.windT - COUNTER_WINDOW) { counter = true; d *= 1.5; }
-    if (e.isBoss && e.counterable && e.wait < COUNTER_WINDOW + 0.02) { counter = true; d *= 1.3; e.counterable = false; }
+    const cw = COUNTER_WINDOW + s.counterWindow;
+    if (e.state === 'wind' && !e.isBoss && e.st >= e.windT - cw) { counter = true; d *= 1.5 * s.counterMul; }
+    if (e.isBoss && e.counterable && e.wait < cw + 0.02) { counter = true; d *= 1.3 * s.counterMul; e.counterable = false; }
     // shield: frontal block unless guard-break / arcane / charged arrow / flank
     if (e.def.shield && e.state !== 'stagger' && !o.shieldBreak && type !== 'arcane' && Math.abs(angDiff(e.face, fromAng)) < 1.13) {
       blocked = true; d *= 0.12;
@@ -53,10 +55,12 @@ export function hitEnemy(e, base, o = {}) {
     if (lv('h_exec') && e.hp < e.maxHp * 0.3) d *= 1.15 + 0.15 * lv('h_exec');
     if (lv('c_wrath')) d *= 1 + Math.min(0.3, 0.03 * (G.run.roomHits || 0));
     if (lv('p_last') && P.hp < P.s.maxHp * 0.3) d *= 2;
+    if (P.sapT > 0) d *= 1.3;
+    if (s.roots.weight && (e.state === 'stagger' || e.stunT > 0 || e.freeze > 0)) d *= 1.5;
     // crit
     const cc = s.crit + (o.critBonus || 0);
     if (!blocked && (o.forceCrit || P.nextCrit || (reso('shadow', 1) && P.shadowCrit) || chance(cc))) {
-      crit = true; d *= s.critMul * (reso('shadow', 2) ? 1.5 : 1);
+      crit = true; d *= s.critMul * (reso('shadow', 2) ? 1.5 : 1); e.lastCrit = G.t;
       P.nextCrit = false; P.shadowCrit = false;
     }
   }
@@ -110,10 +114,15 @@ export function stagger(e, t) {
 function procs(e, d, crit, o) {
   const P = G.player;
   const ds = dotScale();
-  const rend = lv('b_rend') + (lv('c_venom') ? (o.venom || 1) : 0);
+  const s = P.s;
+  const rend = lv('b_rend') + (lv('c_venom') ? (o.venom || 1) : 0) + (s.element === 'blood' ? 1 : 0) + (crit ? s.critBleed : 0);
   if (rend) { e.bleed = Math.min(10, e.bleed + rend); e.bleedT = 4; }
-  if (lv('f_ignite') && chance([0, 0.25, 0.4, 0.55][lv('f_ignite')])) ignite(e);
-  if (lv('i_chill') && chance([0, 0.4, 0.6, 0.8][lv('i_chill')])) chillE(e, 1);
+  if ((lv('f_ignite') && chance([0, 0.25, 0.4, 0.55][lv('f_ignite')])) || (s.element === 'fire' && chance(0.3))) ignite(e);
+  if ((lv('i_chill') && chance([0, 0.4, 0.6, 0.8][lv('i_chill')])) || (s.element === 'frost' && chance(0.4))) chillE(e, 1);
+  P.hits++;
+  if (s.element === 'storm' && P.hits % 4 === 0) chain(e, 2 + (reso('storm', 1) ? 2 : 0), 10 * ds);
+  if (P.thunderHits > 0) { P.thunderHits--; chain(e, 3, 14 * ds); }
+  if (s.roots.echo && P.hits % 5 === 0) later(0.1, () => { if (!e.dead) { hitEnemy(e, d * 0.6 / s.dmgMul, { noProc: true, knock: 10 }); ring(e.x, e.y - 6, 2, 14, 0.25, P.accent[0]); } });
   if (lv('s_arc')) {
     P.arcCount = (P.arcCount || 0) + 1;
     if (P.arcCount % 4 === 0) chain(e, 1 + lv('s_arc') + (reso('storm', 1) ? 2 : 0), (8 + 4 * lv('s_arc')) * ds);
@@ -139,7 +148,7 @@ export function chain(from, n, dmg) {
     if (!best) break;
     bolt(cur.x, cur.y - 6, best.x, best.y - 6);
     hit.add(best); const tgt = best;
-    later(0.04 * (i + 1), () => hitEnemy(tgt, dmg, { type: 'shock', noProc: true, dot: false, knock: 5, fx: cur.x, fy: cur.y }));
+    later(0.04 * (i + 1), () => { tgt.lastShock = G.t; hitEnemy(tgt, dmg, { type: 'shock', noProc: true, dot: false, knock: 5, fx: cur.x, fy: cur.y }); });
     cur = best;
   }
 }
@@ -189,9 +198,11 @@ export function killEnemy(e, o = {}) {
   G.run.kills++;
   emit('kill', { type: e.type, elite: !!e.elite, boss: !!e.isBoss });
   // ash orbs
-  const ash = Math.round(e.def.ash * (e.elite ? 4 : 1) * (e.isBoss ? 1 : 1));
+  const ash = Math.round(e.def.ash * (e.elite ? 4 : 1) * (e.isBoss ? 1 + P.s.bossAsh : 1));
   for (let i = 0; i < ash; i++) G.pickups.push({ kind: 'ash', x: e.x + rand(-4, 4), y: e.y + rand(-4, 4), vx: rand(-60, 60), vy: rand(-60, 60), t: 0, v: 1 });
-  if (lv('b_sacr')) { P.hp = Math.min(P.s.maxHp, P.hp + (1 + lv('b_sacr')) * P.s.healMul); }
+  dropLoot(e);
+  const kh = (lv('b_sacr') ? 1 + lv('b_sacr') : 0) + P.s.killHeal + (P.s.roots.hunger ? P.s.maxHp * 0.03 : 0);
+  if (kh) P.hp = Math.min(P.s.maxHp, P.hp + kh * P.s.healMul);
   if (e.burn > 0 && lv('f_pyre')) later(0.05, () => nova(e.x, e.y, 36, (10 + 10 * lv('f_pyre')) * ds, 'fire', '#ff8f3a', e));
   if (e.bleed > 0 && reso('blood', 2)) later(0.05, () => { ring(e.x, e.y, 2, 50, 0.4, '#e0404f', 2); for (const x of G.enemies) if (!x.dead && dist(x.x, x.y, e.x, e.y) < 50) { x.bleed = Math.min(10, x.bleed + 5); x.bleedT = 4; } });
   if (e.freezeKill || (e.freeze > 0 && reso('frost', 1))) shards(e.x, e.y, 6, 8 * ds);
@@ -200,6 +211,29 @@ export function killEnemy(e, o = {}) {
     G.hazards.push({ kind: 'circle', x: e.x, y: e.y, r: e.def.atk?.r || 34, t: 0, wind: blast, dmg: Math.round((e.def.atk?.kind === 'explode' ? e.dmg : 16 * floorScale())), owner: 'enemy', color: '#b4ec5f', hurtsEnemies: true });
   }
   if (e.isBoss && G.onBossDeath) G.onBossDeath(e);
+}
+
+// resources + items from monsters. Essences come from HOW the enemy died (emergent farming).
+function dropLoot(e) {
+  const P = G.player, s = P.s, f = G.run.floor;
+  const mats = {};
+  const add = (k, n = 1) => { mats[k] = (mats[k] || 0) + n; };
+  const m = s.matMul;
+  if (e.isBoss) { add('bone', 8); add('resin', 3); add('shard', 3); add('heart', 1); add('e_' + BOSS_ELEMENT[e.type], 2); }
+  else {
+    if (chance(0.45 * m)) add('bone', 1 + (chance(0.3) ? 1 : 0));
+    if (chance((e.elite ? 1 : 0.05) * m)) add('resin', e.elite ? 2 : 1);
+    if (e.elite && chance(0.35 * m)) add('shard', 1);
+    const ess = e.bleed > 0 ? 'blood' : e.burn > 0 ? 'fire' : e.freeze > 0 || e.chill > 0 ? 'frost' : e.lastShock && G.t - e.lastShock < 0.5 ? 'storm' : e.lastCrit && G.t - e.lastCrit < 0.05 ? 'shadow' : null;
+    if (ess && chance((e.elite ? 0.6 : 0.14) * m)) add('e_' + ess, 1);
+  }
+  for (const k in mats) for (let i = 0; i < Math.min(mats[k], 4); i++) G.pickups.push({ kind: 'mat', id: k, n: i === 0 ? mats[k] - Math.min(mats[k], 4) + 1 : 1, x: e.x + rand(-4, 4), y: e.y + rand(-4, 4), vx: rand(-70, 70), vy: rand(-70, 70), t: 0 });
+  const pItem = e.isBoss ? 1 : e.elite ? 0.3 : 0.025;
+  if (chance(pItem * s.findMul)) {
+    const it = rollLoot(f, e.isBoss ? 1 : 0, s.rarityBoost);
+    G.pickups.push({ kind: 'item', item: it, x: e.x, y: e.y, vx: rand(-30, 30), vy: rand(-30, 30), t: 0 });
+    if (e.isBoss && f === 5) G.pickups.push({ kind: 'item', item: rollLoot(f, 2, s.rarityBoost), x: e.x + 10, y: e.y, vx: 40, vy: 0, t: 0 });
+  }
 }
 
 export function shards(x, y, n, dmg) {
@@ -220,7 +254,7 @@ export function hurtPlayer(dmg, sx, sy, o = {}) {
   if (P.inv > 0 && !o.ignoreInv) return false;
   if (G.godmode) { P.inv = 0.5; G.run.hitsTaken++; return false; }
   const s = P.s;
-  if (P.arcaneUp) { P.arcaneUp = false; ring(P.x, P.y - 6, 4, 22, 0.4, '#b88cff', 2); text(P.x, P.y - 22, 'щит', '#b88cff'); sfx.block(); P.inv = 0.4; return false; }
+  if (P.arcaneUp) { P.arcaneUp = false; ring(P.x, P.y - 6, 4, 22, 0.4, '#8f7a63', 2); text(P.x, P.y - 22, 'кора', '#b8aa90'); sfx.block(); P.inv = 0.4; return false; }
   dmg = dmg * s.dmgTaken * (P.hyperNow ? 1 - s.hyperArmor : 1);
   if (P.frostShield > 0) { const ab = Math.min(P.frostShield, dmg); P.frostShield -= ab; dmg -= ab; burst(P.x, P.y - 6, 6, '#93e2ff', 50); if (dmg <= 0.5) { P.inv = 0.3; return false; } }
   dmg = Math.max(1, Math.round(dmg));
@@ -254,6 +288,8 @@ export function perfectDodge() {
   P.sta = Math.min(s.maxSta, P.sta + s.dodgeCost);
   P.nextCrit = true;
   G.run.perfects++;
+  if (s.tailwind) P.skillCd *= 0.6;
+  if (s.roots.thunder) P.thunderHits = 3;
   emit('perfect', {});
   slowmo(s.slowmo, 0.25);
   flash('#ffffff', 0.18);

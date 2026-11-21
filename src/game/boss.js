@@ -13,6 +13,7 @@ import { hurtPlayer, floorScale, tickStatus } from './combat.js';
 import { createEnemy } from './enemy.js';
 import { tint } from '../engine/sprite.js';
 
+const tintC = {};
 export function createBoss(id, x, y) {
   const def = BOSSES[id];
   const hp = def.hp * G.player.s.enemyHp;
@@ -23,6 +24,7 @@ export function createBoss(id, x, y) {
     flash: 0, bleed: 0, bleedT: 0, burn: 0, chill: 0, chillT: 0, freeze: 0, stunT: 0, anim: 0,
     phase: 1, gen: null, wait: 0, tele: [], dead: false, z: 0, alpha: 1, speedMul: 1, chip: hp,
   };
+  tintC[id] ||= tint(SPR.boss[def.sprite], '#e0404f'); // pre-bake the phase-2 glow (no hitch mid-fight)
   return b;
 }
 
@@ -237,7 +239,6 @@ export function updateBoss(b, dt) {
   if (d < m && d > 0 && pl.state !== 'dodge') { const push = m - d; moveCollide(G.room, pl, ((pl.x - b.x) / d) * push, ((pl.y - b.y) / d) * push); }
 }
 
-const tintC = {};
 export function drawBoss(g, b) {
   if (b.dead) return;
   const spr = SPR.boss[b.def.sprite];

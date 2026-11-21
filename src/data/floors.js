@@ -14,37 +14,37 @@ export const ROOM_PLAN = [
   { id: 'twist', name: 'Поворот', tension: 7, icon: 'storm' },
   { id: 'fork', name: 'Развилка', tension: 3, icon: 'dice' },
   { id: 'arena', name: 'Арена', tension: 8, icon: 'star' },
-  { id: 'bonfire', name: 'Костёр', tension: 0, icon: 'fire' },
+  { id: 'bonfire', name: 'Очаг Гестии', tension: 0, icon: 'fire' },
   { id: 'boss', name: 'Босс', tension: 10, icon: 'pact' },
 ];
 
 export const FLOORS = [
   {
-    name: 'Корни', sub: 'Глубина I', boss: 'warden',
+    name: 'Корни Эреба', sub: 'Глубина I', boss: 'warden',
     fresh: ['husk', 'hound'], pool: ['husk', 'hound'],
     ranged: [], terrain: 'chasm',
     theme: { floor: ['#211b2a', '#272033', '#1c1724'], wall: ['#3a3048', '#2a2236', '#4c405e'], fog: [12, 8, 18], accent: '#ff8f3a', speck: '#3b2f2a' },
   },
   {
-    name: 'Затопленные склепы', sub: 'Глубина II', boss: 'singer',
+    name: 'Стикс', sub: 'Глубина II', boss: 'singer',
     fresh: ['archer', 'bomber'], pool: ['husk', 'hound', 'archer', 'bomber'],
     ranged: ['archer'], terrain: 'spikes',
     theme: { floor: ['#18252a', '#1d2c31', '#142024'], wall: ['#2c4048', '#1f3036', '#3c5660'], fog: [6, 14, 18], accent: '#63e6cf', speck: '#2f8f84' },
   },
   {
-    name: 'Пепельная кузня', sub: 'Глубина III', boss: 'smith',
+    name: 'Флегетон', sub: 'Глубина III', boss: 'smith',
     fresh: ['shield', 'caster'], pool: ['husk', 'hound', 'archer', 'bomber', 'shield', 'caster'],
     ranged: ['archer', 'caster'], terrain: 'chasm',
     theme: { floor: ['#2a1c18', '#31211c', '#231713'], wall: ['#4a2e24', '#36211a', '#5e3b2d'], fog: [18, 8, 4], accent: '#ff8f3a', speck: '#b5481c' },
   },
   {
-    name: 'Ледяной собор', sub: 'Глубина IV', boss: 'widow',
+    name: 'Коцит', sub: 'Глубина IV', boss: 'widow',
     fresh: ['knight'], pool: ['husk', 'hound', 'archer', 'bomber', 'shield', 'caster', 'knight'],
     ranged: ['archer', 'caster'], terrain: 'spikes', elites: true,
     theme: { floor: ['#1e2533', '#232b3b', '#191f2b'], wall: ['#34405a', '#262f44', '#475775'], fog: [8, 12, 22], accent: '#93e2ff', speck: '#4b8fc9' },
   },
   {
-    name: 'Сердце гнили', sub: 'Глубина V', boss: 'heart',
+    name: 'Тартар', sub: 'Глубина V', boss: 'heart',
     fresh: ['sprout'], pool: ['husk', 'hound', 'archer', 'bomber', 'shield', 'caster', 'knight', 'sprout'],
     ranged: ['archer', 'caster', 'sprout'], terrain: 'both', elites: true,
     theme: { floor: ['#261820', '#2d1c26', '#1f131a'], wall: ['#4a2434', '#371a27', '#5e3044'], fog: [18, 4, 10], accent: '#e0404f', speck: '#8c1c33' },

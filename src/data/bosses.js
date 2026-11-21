@@ -4,7 +4,7 @@
 // Each boss tests what its floor taught (Kishōtenketsu "ketsu").
 export const BOSSES = {
   warden: {
-    name: 'Страж Корней', title: 'Первый узел', floor: 1, sprite: 'warden', color: '#ff8f3a',
+    name: 'Ладон', title: 'Змей Гесперид, вросший в корни', myth: 'Сторожил яблоню Гесперид, пока Геракл не убил его. Гниль Тифона подняла его из корней.', floor: 1, sprite: 'warden', color: '#ff8f3a',
     hp: 1700, r: 13, speed: 34, poise: 260,
     tests: 'чтение замаха и уход вбок',
     moves: [
@@ -18,7 +18,7 @@ export const BOSSES = {
     ],
   },
   singer: {
-    name: 'Утопленная Певчая', title: 'Голос склепа', floor: 2, sprite: 'singer', color: '#63e6cf',
+    name: 'Сирена Стикса', title: 'Песнь, что топит', myth: 'Сирены пели морякам смерть. Эта поёт теням, чтобы те не нашли переправу.', floor: 2, sprite: 'singer', color: '#63e6cf',
     hp: 2300, r: 11, speed: 40, poise: 220,
     tests: 'дистанция: стрелки + прыгуны',
     moves: [
@@ -32,7 +32,7 @@ export const BOSSES = {
     ],
   },
   smith: {
-    name: 'Кузнец Пепла', title: 'Горн без огня', floor: 3, sprite: 'smith', color: '#ff8f3a',
+    name: 'Бронт', title: 'Киклоп из горна Гефеста', myth: 'Ковал Зевсу молнии. Теперь куёт цепи для корней в огне Флегетона.', floor: 3, sprite: 'smith', color: '#ff8f3a',
     hp: 3200, r: 14, speed: 38, poise: 320, armor: 3,
     tests: 'броня и тяжёлые серии',
     moves: [
@@ -46,7 +46,7 @@ export const BOSSES = {
     ],
   },
   widow: {
-    name: 'Ледяная Вдова', title: 'Белая паутина', floor: 4, sprite: 'widow', color: '#93e2ff',
+    name: 'Арахна', title: 'Ткачиха ледяной пряжи', myth: 'Афина превратила её в паука за гордыню. В Коците она плетёт сети из слёз.', floor: 4, sprite: 'widow', color: '#93e2ff',
     hp: 4300, r: 13, speed: 52, poise: 280,
     tests: 'идеальные перекаты под серии',
     moves: [
@@ -61,7 +61,7 @@ export const BOSSES = {
     ],
   },
   heart: {
-    name: 'Сердце Древа', title: 'Гниль, что пустила корни', floor: 5, sprite: 'heart', color: '#e0404f',
+    name: 'Сердце Тифона', title: 'Отец чудовищ грызёт корни', myth: 'Зевс заточил Тифона в Тартар. Гера отворила темницу, и его кровь отравила Древо.', floor: 5, sprite: 'heart', color: '#e0404f',
     hp: 6200, r: 15, speed: 0, poise: 9999, stationary: true,
     tests: 'всё сразу',
     moves: [

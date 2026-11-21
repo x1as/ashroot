@@ -4,9 +4,11 @@ import { G } from '../game/state.js';
 import { SPR } from '../art/bank.js';
 import { ASPECTS, RESONANCE } from '../data/boons.js';
 import { ROOM_PLAN, FLOORS } from '../data/floors.js';
+import { BOSSES } from '../data/bosses.js';
 import { ease, clamp, TAU } from '../engine/util.js';
 import { input } from '../engine/input.js';
 
+const ROMAN2 = ['I', 'II'];
 const FONT = '"Tiny5", ui-monospace, monospace';
 const DISPLAY = '"Press Start 2P", "Tiny5", ui-monospace, monospace';
 const icon = (ctx, name, x, y, s, a = 1) => { const sp = SPR.icon[name]; if (!sp) return; ctx.globalAlpha = a; ctx.imageSmoothingEnabled = false; ctx.drawImage(sp.c, Math.round(x), Math.round(y), sp.w * s, sp.h * s); ctx.globalAlpha = 1; };
@@ -40,10 +42,20 @@ export function drawHUD(ctx, w2s) {
   ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(pad, top, hpw, Math.max(1, bh * 0.3));
   font(ctx, 11 * hs); ctx.textAlign = 'left'; ctx.fillStyle = '#ece4d0';
   ctx.fillText(`${Math.max(0, Math.ceil(P.hp))} / ${maxHp}`, pad + bw + 8 * hs, top + bh - 1);
-  const sy = top + bh + 5 * hs, sh = Math.max(3, Math.round(3 * hs));
-  ctx.fillStyle = '#08060d'; ctx.fillRect(pad - 2, sy - 2, bw * 0.8 + 4, sh + 4);
-  ctx.fillStyle = P.staDelay > 0 ? '#6b5f82' : '#ece4d0';
-  ctx.fillRect(pad, sy, (bw * 0.8 * Math.max(0, P.sta)) / P.s.maxSta, sh);
+  // stamina: full-width bar, segmented every 25 points so costs are readable; flashes red when spent
+  const sy = top + bh + 6 * hs, sh = Math.max(5, Math.round(6 * hs));
+  P.staChip = P.staChip === undefined ? P.sta : P.staChip + (P.sta - P.staChip) * (P.sta < P.staChip ? 0.06 : 1);
+  const staLow = P.sta < P.s.dodgeCost;
+  ctx.fillStyle = '#08060d'; ctx.fillRect(pad - 2, sy - 2, bw + 4, sh + 4);
+  ctx.fillStyle = staLow && Math.sin(G.real * 14) > 0 ? '#3a1520' : '#1c1826'; ctx.fillRect(pad, sy, bw, sh);
+  ctx.fillStyle = 'rgba(236,228,208,0.35)'; ctx.fillRect(pad, sy, (bw * Math.max(0, P.staChip)) / P.s.maxSta, sh);
+  ctx.fillStyle = P.staDelay > 0 ? '#b8aa90' : '#ffe9a8';
+  ctx.fillRect(pad, sy, (bw * Math.max(0, P.sta)) / P.s.maxSta, sh);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(pad, sy, (bw * Math.max(0, P.sta)) / P.s.maxSta, Math.max(1, sh * 0.3));
+  ctx.fillStyle = '#08060d';
+  for (let v2 = 25; v2 < P.s.maxSta; v2 += 25) ctx.fillRect(pad + (bw * v2) / P.s.maxSta, sy, Math.max(1, hs), sh);
+  font(ctx, 10 * hs); ctx.textAlign = 'left'; ctx.fillStyle = staLow ? '#ff5a6a' : '#b8aa90';
+  ctx.fillText(`${Math.floor(Math.max(0, P.sta))}`, pad + bw + 8 * hs, sy + sh - 1);
   // flasks + ash
   const fy = sy + sh + 8 * hs, is = Math.max(2, Math.round(2.4 * hs));
   for (let i = 0; i < P.s.flasks; i++) icon(ctx, 'flask', pad + i * (8 * is), fy, is, i < P.flasks ? 1 : 0.22);
@@ -52,7 +64,8 @@ export function drawHUD(ctx, w2s) {
   font(ctx, 14 * hs); ctx.fillStyle = '#ece4d0';
   ctx.fillText(Math.floor(r.ash), ax + 9 * is, fy + 6 * is);
   if (P.frostShield > 0) { ctx.fillStyle = '#93e2ff'; ctx.fillText(`❄${Math.ceil(P.frostShield)}`, ax + 9 * is + 50 * hs, fy + 6 * is); }
-  if (P.arcaneUp) { ctx.fillStyle = '#b88cff'; ctx.fillText('◇', ax + 9 * is + 50 * hs, fy + 6 * is); }
+  if (P.arcaneUp) { ctx.fillStyle = '#b8aa90'; ctx.fillText('кора', ax + 9 * is + 50 * hs, fy + 6 * is); }
+  if (r.items.length) { ctx.fillStyle = '#ffb347'; ctx.fillText(`находки ${r.items.length}`, ax + 9 * is + 90 * hs, fy + 6 * is); }
 
   // ---- interest curve: floor rooms as tension bars ----
   const F = FLOORS[r.floor - 1];
@@ -81,8 +94,9 @@ export function drawHUD(ctx, w2s) {
     if (!lvl) continue;
     icon(ctx, A.icon, rx - 7 * is, ay, is);
     font(ctx, 13 * hs); ctx.fillStyle = A.color;
-    const tier = lvl >= 5 ? 'II' : lvl >= 3 ? 'I' : `${lvl}/3`;
-    ctx.fillText(lvl >= 3 ? `${A.name} ${tier}` : `${A.name} ${tier}`, rx - 9 * is, ay + 6 * is);
+    const sh2 = P.s.resoShift || 0, t1 = 3 - sh2, t2 = 5 - sh2;
+    const tier = lvl >= t2 ? ROMAN2[1] : lvl >= t1 ? ROMAN2[0] : `${lvl}/${t1}`;
+    ctx.fillText(`${A.name} ${tier}`, rx - 9 * is, ay + 6 * is);
     ay += 9 * is;
   }
   const pacts = Object.keys(r.boons).filter((id) => id.startsWith('p_')).length;
@@ -93,7 +107,7 @@ export function drawHUD(ctx, w2s) {
     const R = 20 * hs, cx = cw - pad - R - (G.safe?.r || 0), cy = ch - pad - R - (G.safe?.b || 0);
     ctx.fillStyle = 'rgba(8,6,13,0.8)'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
     const k = P.skillCd / (P.C.skill.cd * P.s.skillCd);
-    ctx.strokeStyle = P.C.accent[0]; ctx.lineWidth = 3 * hs;
+    ctx.strokeStyle = P.accent[0]; ctx.lineWidth = 3 * hs;
     ctx.beginPath(); ctx.arc(cx, cy, R - 2 * hs, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - k)); ctx.stroke();
     font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = k > 0 ? '#6b5f82' : '#ece4d0';
     ctx.fillText(k > 0 ? Math.ceil(P.skillCd) : 'E', cx, cy + 4 * hs);
@@ -108,11 +122,16 @@ export function drawHUD(ctx, w2s) {
 
   // ---- diegetic stamina ring ----
   if (P.sta < P.s.maxSta - 0.5 && !P.dead) {
-    const s = w2s(P.x, P.y - 8), R = 4.2 * v.scale / v.dpr * 2.4;
-    ctx.lineWidth = Math.max(2, v.scale / v.dpr * 0.9);
-    ctx.strokeStyle = 'rgba(8,6,13,0.6)'; ctx.beginPath(); ctx.arc(s.x + R * 1.2, s.y, R * 0.5, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = P.staDelay > 0 ? '#6b5f82' : '#ece4d0';
-    ctx.beginPath(); ctx.arc(s.x + R * 1.2, s.y, R * 0.5, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, P.sta / P.s.maxSta)); ctx.stroke();
+    // big readable ring beside the hero (world units -> screen), dodge-cost tick marks where a roll stops being possible
+    const u = v.scale / v.dpr, sp = w2s(P.x + 11, P.y - 9), R = 5 * u;
+    const k = Math.max(0, P.sta / P.s.maxSta), kc = P.s.dodgeCost / P.s.maxSta;
+    ctx.lineWidth = Math.max(3, 1.6 * u);
+    ctx.strokeStyle = 'rgba(8,6,13,0.7)'; ctx.beginPath(); ctx.arc(sp.x, sp.y, R, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = P.sta < P.s.dodgeCost ? '#ff5a6a' : P.staDelay > 0 ? '#b8aa90' : '#ffe9a8';
+    ctx.beginPath(); ctx.arc(sp.x, sp.y, R, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+    ctx.strokeStyle = '#08060d'; ctx.lineWidth = Math.max(1, 0.5 * u);
+    const a = -Math.PI / 2 + TAU * kc;
+    ctx.beginPath(); ctx.moveTo(sp.x + Math.cos(a) * (R - 2 * u), sp.y + Math.sin(a) * (R - 2 * u)); ctx.lineTo(sp.x + Math.cos(a) * (R + 2 * u), sp.y + Math.sin(a) * (R + 2 * u)); ctx.stroke();
   }
 
   // ---- fork labels ----
@@ -121,18 +140,19 @@ export function drawHUD(ctx, w2s) {
       const s = w2s(ex.x, ex.y + 30);
       font(ctx, 12 * hs); ctx.textAlign = 'center';
       ctx.fillStyle = ex.kind === 'cursed' ? '#ff3355' : '#ece4d0';
-      ctx.fillText(ex.kind === 'cursed' ? 'ПРОКЛЯТАЯ ТРОПА' : 'ТРОПА', s.x, s.y);
+      ctx.fillText(ex.kind === 'cursed' ? 'ТРОПА НЕМЕЗИДЫ' : 'ТРОПА', s.x, s.y);
       font(ctx, 10 * hs); ctx.fillStyle = '#9b8fb3';
       ctx.fillText(ex.kind === 'cursed' ? 'арена: +элита, урон врагов ×1.25 · 2 дара' : 'обычная арена', s.x, s.y + 14 * hs);
     }
   }
-  if (G.room.bonfire && !G.room.bonfire.used) { const s = w2s(G.room.bonfire.x, G.room.bonfire.y + 18); font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = '#ffd36b'; ctx.fillText('подойди к костру', s.x, s.y); }
-  if (G.room.echo) { const s = w2s(G.room.echo.x, G.room.echo.y + 12); font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = '#ece4d0'; ctx.fillText(`твой отголосок · ${G.room.echo.ash} пепла`, s.x, s.y); }
+  if (G.room.bonfire && !G.room.bonfire.used) { const s = w2s(G.room.bonfire.x, G.room.bonfire.y + 18); font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = '#ffd36b'; ctx.fillText('подойди к очагу Гестии', s.x, s.y);
+    const nb = BOSSES[FLOORS[r.floor - 1].boss]; ctx.fillStyle = '#9b8fb3'; ctx.fillText(`за дверью — ${nb.name}. ${nb.myth}`, cw / 2, ch - 40 * hs); }
+  if (G.room.echo) { const s = w2s(G.room.echo.x, G.room.echo.y + 12); font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = '#ece4d0'; ctx.fillText(`твоя тень · ${G.room.echo.ash} пепла`, s.x, s.y); }
   // controls hint in the very first room
   if (r.floor === 1 && r.roomIdx === 0 && G.room.state.t < 14) {
     font(ctx, 12 * hs); ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(236,228,208,0.75)';
     const lines = input.touch ? ['стик — движение · ⚔ атака · ↯ перекат', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО']
-      : ['WASD — движение · ЛКМ/J — атака · Space — перекат · E/ПКМ — умение · Q — фляга', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО'];
+      : ['WASD — движение · ЛКМ/J — атака · Space — перекат · E/ПКМ — умение · Q — нектар', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО'];
     lines.forEach((l, i) => ctx.fillText(l, cw / 2, ch - (input.touch ? 150 : 52) * hs + i * 18 * hs));
   }
 

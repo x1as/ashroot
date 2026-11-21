@@ -1,9 +1,9 @@
 // README hero image via the `pixel-art` SVG skill method: every pixel is a <rect> on a fixed grid,
 // characters placed with <g transform="translate()">, tight viewBox. Source = the game's own sprites.
 import fs from 'node:fs';
-import { BODY, LEGS, ROBE, LEGMAP, BOSS_ART } from '../src/art/pixels.js';
+import { HEAD, TORSO, LEGS, LEGMAP, BOSS_ART } from '../src/art/pixels.js';
 import { PAL, OUTLINE } from '../src/engine/sprite.js';
-import { CLASSES, CLASS_ORDER } from '../src/data/classes.js';
+import { HERO } from '../src/data/weapons.js';
 
 const P = 5; // px per pixel
 function grid(rows, map = {}, accent) {
@@ -21,11 +21,12 @@ function rects(g) {
   return s;
 }
 let body = '', x = 24;
-for (const cls of CLASS_ORDER) {
-  const legs = cls === 'mage' ? ROBE.stand : LEGS.stand;
-  const g = grid([...BODY[cls], ...legs], LEGMAP[cls], CLASSES[cls].accent);
+// Heracles in four armour weights (the look follows equipped gear)
+const LOOKS = [['none', 'без брони', '#ff8f3a'], ['light', 'лёгкая', '#e0404f'], ['medium', 'средняя', '#93e2ff'], ['heavy', 'тяжёлая', '#ffd36b']];
+for (const [w, label, acc] of LOOKS) {
+  const g = grid([...HEAD[w], ...TORSO[w], ...LEGS.stand], LEGMAP[w], [acc, '#2a2438']);
   body += `<g transform="translate(${x},${150 - g.length * P})">${rects(g)}</g>`;
-  body += `<text x="${x + (g[0].length * P) / 2}" y="168" fill="${CLASSES[cls].accent[0]}" font-size="12" text-anchor="middle">${CLASSES[cls].name}</text>`;
+  body += `<text x="${x + (g[0].length * P) / 2}" y="168" fill="${acc}" font-size="12" text-anchor="middle">${label}</text>`;
   x += 90;
 }
 let bx = 400;
@@ -39,7 +40,7 @@ const W = Math.ceil(bx + 10), H = 184;
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="monospace">
 <rect width="${W}" height="${H}" fill="#07050c" rx="12"/>
 <text x="24" y="38" fill="#ece4d0" font-size="26" font-weight="700" letter-spacing="6">ASHROOT</text>
-<text x="24" y="58" fill="#9b8fb3" font-size="12">souls-like · roguelite · 4 ветви · 5 глубин · 5 боссов</text>
+<text x="24" y="58" fill="#9b8fb3" font-size="12">Тринадцатый подвиг Геракла · 5 глубин Аида · 5 порождений Тифона</text>
 ${body}
 </svg>`;
 fs.mkdirSync('docs', { recursive: true });

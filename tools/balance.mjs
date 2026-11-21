@@ -1,10 +1,16 @@
 // Balance simulator: `npm run balance`. Reads the SAME data files the game uses.
 // Checks the tough-but-fair contract and prints TTK / hits-to-die / boss duration / matchup matrix.
-import { CLASSES, CLASS_ORDER, rawDps, hitList } from '../src/data/classes.js';
+import { WEAPONS as CLASSES, WEAPON_ORDER as CLASS_ORDER, rawDps, hitList } from '../src/data/weapons.js';
+import { BASES } from '../src/data/items.js';
 import { ENEMIES, SCALE, MIN_TELEGRAPH, MIN_PUNISH } from '../src/data/enemies.js';
 import { BOSSES, BOSS_ORDER } from '../src/data/bosses.js';
 import { TREE } from '../src/data/tree.js';
-import { computeStats } from '../src/game/stats.js';
+import { computeStats as cs } from '../src/game/stats.js';
+
+// one hero: a 'class' here is a weapon type, worn with the starter light set (common, +0)
+const baseOf = (wk) => Object.keys(BASES).find((k) => BASES[k].kind === wk);
+const item = (base) => ({ base, slot: BASES[base].slot, rarity: 0, ilvl: 1, up: 0, affixes: [], infuse: null });
+const computeStats = (wk, meta = {}) => cs(meta, { weapon: item(baseOf(wk)), helm: item('h_light'), chest: item('c_light') });
 
 const UPTIME = 0.45;        // share of a fight you can actually attack (rest = dodging/positioning)
 const PICK_POWER = 1.05;    // average offensive value of one run upgrade (multiplicative)
@@ -25,10 +31,10 @@ function hitVs(cls, dmg, e, f, fromFront = 0.5) {
   d *= 1 - res;
   const shieldBreak = c.guardBreak || (c.arrow && dmg >= c.arrow.chargedDmg);
   if (e.shield && !c.ignoreArmor && !shieldBreak) {
-    const front = cls === 'rogue' ? 0.3 : fromFront; // rogue flanks
+    const front = cls === 'dagger' ? 0.3 : fromFront; // rogue flanks
     d *= 1 - front * 0.85;
   }
-  if (cls === 'rogue' && e.shield) d *= 1 + c.backstab * 0.7;
+  if (cls === 'dagger' && e.shield) d *= 1 + c.backstab * 0.7;
   return d;
 }
 function dpsVs(cls, e, f, stats, picks) {
@@ -38,9 +44,9 @@ function dpsVs(cls, e, f, stats, picks) {
   const crit = 1 + stats.crit * (stats.critMul - 1);
   // blinking casters punish slow melee (time lost chasing)
   let chase = 1;
-  if (e.blink && c.combo) chase = cls === 'warrior' ? 0.55 : 0.8;
-  if (e.ai === 'lunger' && cls === 'warrior') chase *= 0.8; // fast enemies vs slow swings
-  if (e.ai === 'lunger' && (cls === 'mage' || cls === 'archer')) chase *= 0.85;
+  if (e.blink && c.combo) chase = cls === 'greatsword' ? 0.55 : 0.8;
+  if (e.ai === 'lunger' && cls === 'greatsword') chase *= 0.8; // fast enemies vs slow swings
+  if (e.ai === 'lunger' && (cls === 'staff' || cls === 'bow')) chase *= 0.85;
   // poise: if one hit breaks the enemy's stance it loses attacks -> more uptime (stagger-lock)
   const maxHit = Math.max(...hits) * c.poiseDmg;
   const stagger = e.poise && maxHit >= e.poise ? 1.25 : 1;
@@ -63,7 +69,7 @@ for (const id of BOSS_ORDER) {
   }
 }
 // slowest class must be able to punish: warrior opener must fit inside the shortest punish window
-const warOpen = CLASSES.warrior.combo[0].wind + CLASSES.warrior.combo[0].act;
+const warOpen = CLASSES.greatsword.combo[0].wind + CLASSES.greatsword.combo[0].act;
 console.log(`warrior opener ${warOpen.toFixed(2)}s vs min punish ${MIN_PUNISH}s` + flag(warOpen <= MIN_PUNISH, 'warrior opener longer than min punish window'));
 
 for (const [label, meta] of [['FRESH (no tree)', {}], ['HALF TREE', metaHalf], ['FULL TREE', metaFull]]) {
@@ -128,7 +134,7 @@ for (const cls of CLASS_ORDER) {
 }
 
 console.log('\n=== RAW DPS ===');
-for (const cls of CLASS_ORDER) console.log(cls.padEnd(9), rawDps(CLASSES[cls]).toFixed(1), 'hp', CLASSES[cls].hp, 'dps*hp', (rawDps(CLASSES[cls]) * CLASSES[cls].hp / 100).toFixed(0));
+for (const cls of CLASS_ORDER) { const st = computeStats(cls); console.log(cls.padEnd(11), 'dps', (rawDps(CLASSES[cls]) * st.dmgMul).toFixed(1), 'hp', st.maxHp, 'sta', st.maxSta, 'armor', st.armor.toFixed(1), 'roll', st.roll); }
 
 console.log(warn.length ? `\n${warn.length} WARNINGS:\n - ` + warn.join('\n - ') : '\nALL CHECKS PASSED');
 process.exitCode = warn.length ? 1 : 0;

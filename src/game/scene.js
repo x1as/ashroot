@@ -4,7 +4,9 @@
 import { G } from './state.js';
 import { input } from '../engine/input.js';
 import { damp, dist, angTo, TAU, clamp, ease, rand } from '../engine/util.js';
-import { drawSprite, pcircle } from '../engine/sprite.js';
+import { drawSprite, pcircle, RES, rp } from '../engine/sprite.js';
+import { addItem, addMats } from './items.js';
+import { RARITY, RESOURCES, BASES } from '../data/items.js';
 import { updateFx, drawParts, drawArcs, drawRings, shakeOffset, burst, shadow, ring, text } from '../engine/fx.js';
 import { sfx } from '../engine/audio.js';
 import { SPR } from '../art/bank.js';
@@ -17,15 +19,21 @@ import { updateRoom, takeExit } from './run.js';
 import { drawHUD } from '../ui/hud.js';
 import { FLOORS } from '../data/floors.js';
 
-let buf, bg, light, lg;
+let buf, bg, light, lg, lightSpr;
+const PAD = 2; // buffer pixels of margin for sub-pixel camera scrolling
 export function initScene() {
-  buf = document.createElement('canvas'); bg = buf.getContext('2d');
+  buf = document.createElement('canvas'); bg = buf.getContext('2d', { alpha: false });
   light = document.createElement('canvas'); lg = light.getContext('2d');
+  // one pre-rendered radial light, stamped with drawImage: no per-frame gradient objects, no GC stalls
+  lightSpr = document.createElement('canvas'); lightSpr.width = lightSpr.height = 64;
+  const l = lightSpr.getContext('2d'), gr = l.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  l.fillStyle = gr; l.fillRect(0, 0, 64, 64);
 }
 export function resizeBuffers() {
   const v = G.view;
-  buf.width = v.w + 2; buf.height = v.h + 2;
-  light.width = Math.ceil((v.w + 2) / 2); light.height = Math.ceil((v.h + 2) / 2);
+  buf.width = Math.ceil(v.w * RES) + PAD * 2; buf.height = Math.ceil(v.h * RES) + PAD * 2;
+  light.width = Math.ceil(buf.width / 4); light.height = Math.ceil(buf.height / 4);
 }
 
 // ---------------- update ----------------
@@ -85,9 +93,10 @@ function updateProjectiles(dt) {
         if (hit || P.inv > 0) p.life = 0;
       }
     }
-    if (Math.random() < 0.5 && p.kind !== 'arrow' && p.kind !== 'bonearrow') G.parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.2, max: 0.2, size: 1, color: p.color, drag: 0, grav: 0, z: 0, vz: 0 });
+    if (Math.random() < (p.owner === 'player' ? 0.5 : 0.15) && p.kind !== 'arrow' && p.kind !== 'bonearrow') G.parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.2, max: 0.2, size: 1, color: p.color, drag: 0, grav: 0, z: 0, vz: 0 });
   }
   G.projs = G.projs.filter((p) => p.life > 0);
+  if (G.projs.length > 220) G.projs.splice(0, G.projs.length - 220);
 }
 function nova(p) {
   G.hazards.push({ kind: 'circle', x: p.x, y: p.y, r: 26, t: 0, wind: 0.01, dmg: p.dmg * 0.6 * G.player.s.dmgMul, owner: 'player', color: '#b88cff', type: 'arcane' });
@@ -140,9 +149,16 @@ function updatePickups(dt) {
     p.x += p.vx * dt; p.y += p.vy * dt;
     if (d < 6 && p.t > 0.4) {
       p.dead = true;
-      const v = p.v * P.s.ashMul;
-      G.run.ash += v; G.run.ashFrac = (G.run.ashFrac || 0);
-      sfx.ash();
+      if (p.kind === 'ash') { G.run.ash += p.v * P.s.ashMul; sfx.ash(); }
+      else if (p.kind === 'mat') {
+        addMats(G.save.inv, { [p.id]: p.n }); G.run.mats[p.id] = (G.run.mats[p.id] || 0) + p.n;
+        text(P.x, P.y - 22, `+${p.n} ${RESOURCES[p.id].name}`, RESOURCES[p.id].color); sfx.ash();
+      } else if (p.kind === 'item') {
+        const ok = addItem(G.save.inv, p.item, P.s.bag);
+        if (ok) G.run.items.push(p.item);
+        text(P.x, P.y - 28, ok ? p.item.name : 'инвентарь полон', RARITY[p.item.rarity].color, true);
+        ring(P.x, P.y - 6, 3, 22, 0.4, RARITY[p.item.rarity].color, 2); sfx.pick();
+      }
     }
   }
   G.pickups = G.pickups.filter((p) => !p.dead);
@@ -175,13 +191,15 @@ export function renderGame(ctx) {
   const v = G.view, R = G.room, P = G.player;
   const so = shakeOffset(); G.shakeO = so;
   const cx = G.cam.x + so.x - v.w / 2, cy = G.cam.y + so.y - v.h / 2;
-  const ix = Math.floor(cx), iy = Math.floor(cy), fx = cx - ix, fy = cy - iy;
+  // camera in BUFFER pixels (RES per world unit); the fraction is applied when upscaling = smooth scroll
+  const bx = cx * RES, by = cy * RES;
+  const ix = Math.floor(bx), iy = Math.floor(by), fx = bx - ix, fy = by - iy;
   const g = bg;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = '#05030a'; g.fillRect(0, 0, buf.width, buf.height);
-  g.setTransform(1, 0, 0, 1, -ix + 1, -iy + 1);
+  g.setTransform(RES, 0, 0, RES, -ix + PAD, -iy + PAD);
   g.imageSmoothingEnabled = false;
-  g.drawImage(R.bg, 0, 0);
+  g.drawImage(R.bg, 0, 0, R.pw, R.ph);
   drawSpikes(g, R, G.t);
   // zones & hazards (ground layer)
   for (const z of G.zones) { g.globalAlpha = 0.35 * (1 - z.t / z.life); g.fillStyle = z.color; pcircle(g, z.x, z.y, z.r, z.r * 0.6); }
@@ -192,7 +210,7 @@ export function renderGame(ctx) {
   if (R.bonfire) drawBonfire(g, R.bonfire);
   if (R.echo) drawEcho(g, R.echo);
   // pickups
-  for (const p of G.pickups) { const tw = Math.sin(G.real * 10 + p.x) > 0; g.fillStyle = tw ? '#ece4d0' : '#9b8fb3'; g.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); g.fillStyle = 'rgba(236,228,208,0.35)'; g.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1); }
+  for (const p of G.pickups) drawPickup(g, p);
   // y-sorted actors
   const actors = [...G.enemies.filter((e) => !e.dead), P];
   actors.sort((a, b) => a.y - b.y);
@@ -204,16 +222,15 @@ export function renderGame(ctx) {
   // projectiles
   for (const p of G.projs) drawProj(g, p);
   drawArcs(g); drawRings(g); drawParts(g);
-  g.drawImage(R.ov, 0, 0);
+  g.drawImage(R.ov, 0, 0, R.pw, R.ph);
   drawExits(g, R, G.t);
   // lighting
   drawLight(g, ix, iy);
   // blit
   ctx.imageSmoothingEnabled = false;
-  const s = v.scale;
+  const k = v.scale / RES; // device pixels per buffer pixel (integer)
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#05030a'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.drawImage(buf, Math.round(-(fx + 1) * s), Math.round(-(fy + 1) * s), buf.width * s, buf.height * s);
+  ctx.drawImage(buf, Math.round(-(fx + PAD) * k), Math.round(-(fy + PAD) * k), buf.width * k, buf.height * k);
   ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
   drawScreenLayer(ctx);
 }
@@ -244,8 +261,8 @@ function drawHazard(g, h) {
 function drawProj(g, p) {
   const a = Math.atan2(p.vy, p.vx);
   if (p.kind === 'arrow' || p.kind === 'bonearrow') {
-    const spr = p.kind === 'arrow' ? SPR.weapon['arrow_' + G.run.cls] : SPR.weapon.bonearrow;
-    g.save(); g.translate(Math.round(p.x), Math.round(p.y)); g.rotate(a); g.drawImage(spr.c, -spr.w + 2, -Math.floor(spr.h / 2)); g.restore();
+    const spr = p.kind === 'arrow' ? SPR.weapon['arrow_' + (G.player.s.element || 'none')] : SPR.weapon.bonearrow;
+    g.save(); g.translate(rp(p.x), rp(p.y)); g.rotate(a); g.drawImage(spr.c, -spr.w + 2, -spr.h / 2, spr.w, spr.h); g.restore();
     if (p.full) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(p.x - Math.cos(a) * 6), Math.round(p.y - Math.sin(a) * 6), 1, 1); }
     return;
   }
@@ -266,7 +283,7 @@ function drawBonfire(g, b) {
 function drawEcho(g, e) {
   const bob = Math.sin(G.real * 2) * 2;
   g.globalAlpha = 0.55 + 0.2 * Math.sin(G.real * 3);
-  g.drawImage(SPR.ghost[e.cls] || SPR.ghost.rogue, Math.round(e.x - 7), Math.round(e.y - 18 + bob));
+  const gs = SPR.ghost; g.drawImage(gs, rp(e.x - 7), rp(e.y - 18 + bob), gs.width / RES, gs.height / RES);
   g.globalAlpha = 1;
   if (Math.random() < 0.2) G.parts.push({ x: e.x + rand(-5, 5), y: e.y, vx: 0, vy: -15, life: 0.8, max: 0.8, size: 1, color: '#ece4d0', drag: 1, grav: 0, z: 0, vz: 0, glow: true });
 }
@@ -275,39 +292,67 @@ function drawLight(g, ix, iy) {
   const R = G.room, P = G.player, F = FLOORS[G.run.floor - 1];
   const [fr, fg, fb] = F.theme.fog;
   const L = lg, W = light.width, H = light.height;
-  L.globalCompositeOperation = 'source-over';
-  L.setTransform(1, 0, 0, 1, 0, 0);
-  L.fillStyle = `rgba(${fr},${fg},${fb},0.72)`; L.fillRect(0, 0, W, H);
+  L.globalCompositeOperation = 'source-over'; L.globalAlpha = 1;
+  L.fillStyle = `rgba(${fr},${fg},${fb},0.64)`; L.fillRect(0, 0, W, H);
   L.globalCompositeOperation = 'destination-out';
-  const ox = -ix + 1, oy = -iy + 1;
+  const q = 4; // the light canvas is 1/4 of the buffer
   const hole = (x, y, r, a = 1) => {
-    const X = (x + ox) / 2, Y = (y + oy) / 2, RR = r / 2;
+    const X = (x * RES - ix + PAD) / q, Y = (y * RES - iy + PAD) / q, RR = (r * RES) / q / 2;
     if (X < -RR || Y < -RR || X > W + RR || Y > H + RR) return;
-    const gr = L.createRadialGradient(X, Y, 0, X, Y, RR);
-    gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.55, `rgba(0,0,0,${a * 0.6})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    L.fillStyle = gr; L.fillRect(X - RR, Y - RR, RR * 2, RR * 2);
+    L.globalAlpha = a; L.drawImage(lightSpr, X - RR, Y - RR, RR * 2, RR * 2);
   };
-  hole(P.x, P.y - 6, 150, 1);
+  hole(P.x, P.y - 6, 200, 1);
   for (const t of R.torches) hole(t.x, t.y + 8, 70 + Math.sin(G.real * 9 + t.x) * 4, 0.8);
   for (const ex of R.exits) if (ex.open) hole(ex.x, ex.y + 4, 60, 0.9);
   if (R.bonfire) hole(R.bonfire.x, R.bonfire.y, 120, 1);
-  for (const p of G.projs) hole(p.x, p.y, 24, 0.7);
+  let n = 0;
+  for (const p of G.projs) { if (n++ > 40) break; hole(p.x, p.y, 24, 0.6); }
   for (const h of G.hazards) if (!h.done && h.owner === 'enemy') hole(h.x, h.y, h.r * 1.6, 0.5);
   for (const e of G.enemies) if (e.isBoss && !e.dead) hole(e.x, e.y - 10, 80, 0.6);
+  for (const p of G.pickups) if (p.kind === 'item') hole(p.x, p.y - 6, 40, 0.8);
+  L.globalAlpha = 1;
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true;
-  g.drawImage(light, 0, 0, W * 2, H * 2);
-  g.imageSmoothingEnabled = false;
-  // additive glow for fire / magic
-  g.globalCompositeOperation = 'lighter';
-  const glow = (x, y, r, col, a) => { g.globalAlpha = a; g.fillStyle = col; pcircle(g, x + ox, y + oy, r, r * 0.8); };
-  for (const t of R.torches) { glow(t.x, t.y, 3 + Math.sin(G.real * 12 + t.x), F.theme.accent, 0.5); }
-  for (const p of G.parts) if (p.glow) glow(p.x, p.y, 1, p.color, 0.35);
-  for (const p of G.projs) glow(p.x, p.y, 3, p.color, 0.25);
-  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  g.drawImage(light, 0, 0, W * q, H * q);
   g.restore();
-  // torches drawn on top
-  g.fillStyle = F.theme.accent;
-  for (const t of R.torches) { const fl = Math.sin(G.real * 14 + t.x) > 0 ? 1 : 0; g.fillRect(t.x - 1, t.y - 2 - fl, 2, 3 + fl); g.fillStyle = '#ffd36b'; g.fillRect(t.x, t.y - 1, 1, 1); g.fillStyle = '#4a3d33'; g.fillRect(t.x - 1, t.y + 1, 2, 3); g.fillStyle = F.theme.accent; }
+  g.imageSmoothingEnabled = false;
+  // additive glow for fire / magic (world transform)
+  g.globalCompositeOperation = 'lighter';
+  for (const t of R.torches) { g.globalAlpha = 0.5; g.fillStyle = F.theme.accent; pcircle(g, t.x, t.y, 3 + Math.sin(G.real * 12 + t.x)); }
+  g.globalAlpha = 0.35;
+  for (const p of G.parts) if (p.glow) { g.fillStyle = p.color; g.fillRect(rp(p.x - 1), rp(p.y - 1), 2, 2); }
+  g.globalAlpha = 0.25;
+  n = 0;
+  for (const p of G.projs) { if (n++ > 60) break; g.fillStyle = p.color; g.fillRect(rp(p.x - 3), rp(p.y - 3), 6, 6); }
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  // torches on top
+  for (const t of R.torches) {
+    const fl = Math.sin(G.real * 14 + t.x) > 0 ? 0.5 : 0;
+    g.fillStyle = '#4a3d33'; g.fillRect(t.x - 1, t.y + 1, 2, 3);
+    g.fillStyle = F.theme.accent; g.fillRect(t.x - 1, t.y - 2 - fl, 2, 3 + fl);
+    g.fillStyle = '#ffd36b'; g.fillRect(t.x - 0.5, t.y - 1, 1, 1.5);
+  }
+}
+
+function drawPickup(g, p) {
+  const bob = Math.sin(G.real * 5 + p.x) * 0.75;
+  if (p.kind === 'ash') {
+    const tw = Math.sin(G.real * 10 + p.x) > 0;
+    g.fillStyle = tw ? '#ece4d0' : '#9b8fb3'; g.fillRect(rp(p.x - 0.5), rp(p.y - 1), 1, 1.5);
+    g.fillStyle = 'rgba(236,228,208,0.35)'; g.fillRect(rp(p.x - 1.5), rp(p.y - 0.5), 3, 0.5);
+  } else if (p.kind === 'mat') {
+    const c = RESOURCES[p.id].color;
+    g.fillStyle = '#08060d'; pcircle(g, p.x, p.y - 1 + bob, 2);
+    g.fillStyle = c; pcircle(g, p.x, p.y - 1 + bob, 1.5);
+    g.fillStyle = '#ffffff'; g.fillRect(rp(p.x - 0.5), rp(p.y - 2 + bob), 0.5, 0.5);
+  } else {
+    // dropped item: rarity-coloured light beam + its icon
+    const col = RARITY[p.item.rarity].color, ico = SPR.icon[BASES[p.item.base].icon];
+    g.globalAlpha = 0.25 + 0.15 * Math.sin(G.real * 4); g.fillStyle = col;
+    g.fillRect(rp(p.x - 1.5), rp(p.y - 26), 3, 24); g.fillRect(rp(p.x - 0.5), rp(p.y - 40), 1, 38);
+    g.globalAlpha = 1;
+    g.fillStyle = col; pcircle(g, p.x, p.y, 5, 2);
+    g.drawImage(ico.c, rp(p.x - ico.w / 2), rp(p.y - ico.h - 3 + bob), ico.w, ico.h);
+  }
 }
 
 function drawScreenLayer(ctx) {

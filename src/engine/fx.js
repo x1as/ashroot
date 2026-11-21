@@ -1,7 +1,7 @@
 // Juice: particles, smear arcs, rings, floating numbers, shake, hit-stop, slow-mo, flashes.
 import { G } from '../game/state.js';
 import { rand, TAU, ease, noise1 } from './util.js';
-import { pcircle } from './sprite.js';
+import { pcircle, rp } from './sprite.js';
 
 export function shake(amount) { G.cam.trauma = Math.min(1, G.cam.trauma + amount); }
 export function kick(dx, dy, s = 3) { const l = Math.hypot(dx, dy) || 1; G.cam.kick.x += (dx / l) * s; G.cam.kick.y += (dy / l) * s; }
@@ -77,7 +77,7 @@ export function drawParts(g) {
     g.globalAlpha = p.fade ? Math.min(1, t * 1.6) : Math.min(1, t * 3);
     g.fillStyle = p.color;
     const s = p.size;
-    g.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2 - p.z), s, s);
+    g.fillRect(rp(p.x - s / 2), rp(p.y - s / 2 - p.z), s, s);
   }
   g.globalAlpha = 1;
 }
@@ -105,8 +105,8 @@ export function drawArcs(g) {
 export function drawRings(g) {
   for (const r of G.rings) {
     const k = r.t / r.life, rr = r.r0 + (r.r1 - r.r0) * ease.outCubic(k);
-    g.globalAlpha = 1 - k; g.strokeStyle = r.color; g.lineWidth = r.th;
-    g.beginPath(); g.arc(Math.round(r.x), Math.round(r.y), rr, 0, TAU); g.stroke();
+    g.globalAlpha = 1 - k; g.strokeStyle = r.color; g.lineWidth = r.th * 0.75;
+    g.beginPath(); g.arc(rp(r.x), rp(r.y), rr, 0, TAU); g.stroke();
   }
   g.globalAlpha = 1;
 }

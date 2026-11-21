@@ -14,17 +14,22 @@ import { onPlayerDeath, onBossDeath, enterRoom, startRun } from './game/run.js';
 import { killEnemy } from './game/combat.js';
 import { openExits, updateFlow, flowDir, los } from './game/world.js';
 import { ROOM_PLAN } from './data/floors.js';
+import { RES } from './engine/sprite.js';
+import { makeItem, equipItem } from './game/items.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const cw = window.innerWidth, ch = window.innerHeight;
+  // full device resolution up to 2K (2560 px on the long side) — sharper on big screens, capped for speed
+  const dpr = Math.min(window.devicePixelRatio || 1, 3, Math.max(1, 2560 / Math.max(cw, ch, 1)));
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
   canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
-  const scale = Math.max(2, Math.round(Math.min(cw * dpr, ch * dpr) / 220));
-  Object.assign(G.view, { cw, ch, dpr, scale, w: Math.ceil((cw * dpr) / scale), h: Math.ceil((ch * dpr) / scale) });
+  // k = device pixels per buffer pixel (integer = crisp), RES buffer pixels per world unit (Scale2x art)
+  const k = Math.max(1, Math.round(Math.min(cw * dpr, ch * dpr) / (220 * RES)));
+  const scale = k * RES;
+  Object.assign(G.view, { cw, ch, dpr, scale, k, w: Math.ceil((cw * dpr) / scale), h: Math.ceil((ch * dpr) / scale) });
   const probe = getComputedStyle(document.getElementById('safe'));
   G.safe = { t: parseFloat(probe.paddingTop) || 0, r: parseFloat(probe.paddingRight) || 0, b: parseFloat(probe.paddingBottom) || 0, l: parseFloat(probe.paddingLeft) || 0 };
   resizeBuffers();
@@ -94,7 +99,7 @@ function installDebug() {
     if (e.code === 'KeyI') { G.godmode = !G.godmode; }
   });
 }
-window.__dbg = { tick: (sec) => { for (let i = 0; i < sec * 60; i++) frame(0, true); }, enterRoom, startRun, openExits, killEnemy, input, updateGame, ui, updateFlow, flowDir, los };
+window.__dbg = { makeItem, equipItem, tick: (sec) => { for (let i = 0; i < sec * 60; i++) frame(0, true); }, enterRoom, startRun, openExits, killEnemy, input, updateGame, ui, updateFlow, flowDir, los };
 
 // wait for the pixel font (max 1.5 s, then boot with the fallback)
 const fontReady = document.fonts?.load ? Promise.all([document.fonts.load('16px "Tiny5"'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}) : Promise.resolve();

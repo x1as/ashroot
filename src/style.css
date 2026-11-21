@@ -65,6 +65,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important
 .mu { margin: 0 0 12px; color: var(--ash); line-height: 1.5; font-size: 13px; }
 .good { color: var(--acc); } .bad { color: var(--blood); }
 .hint { margin: 0 0 10px; color: var(--mute); font-size: 12px; }
+.myth { margin: 0 0 10px; color: var(--ash); font-size: 13px; line-height: 1.5; }
+.myth summary { cursor: pointer; color: var(--gold); }
+.myth p { margin: 6px 0 0; }
 .record { margin: 0; color: var(--mute); font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .echo { color: var(--bone); }
 .rank { margin: 0 0 8px; color: var(--acc); letter-spacing: 0.2em; }
@@ -184,3 +187,74 @@ body.is-touch.in-game:not(.overlay) #touch { display: block; }
 body.is-touch.in-game .brand { display: none; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* ---------- gear button in the menu dock ---------- */
+.gearbtn { display: flex; align-items: center; gap: 10px; background: transparent; border: 1px solid var(--line); padding: 6px 16px 6px 8px; color: var(--bone); font-size: 18px; transition: border-color .15s, transform .2s cubic-bezier(.2, 1.4, .4, 1); }
+.gearbtn img { width: 39px; height: 48px; image-rendering: pixelated; }
+.gearbtn:hover { border-color: var(--bone); transform: translateY(-2px); }
+
+/* ---------- equipment / inventory / forge ---------- */
+.overlay.gear { justify-content: flex-start; align-items: stretch; gap: 12px; background: #07050c; }
+.gear-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.gear-head h2 { text-align: left; flex: 0 0 auto; }
+.gear-res { display: flex; flex-wrap: wrap; gap: 6px 14px; flex: 1 1 auto; min-width: 0; }
+.res { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.res img { width: 21px; height: 21px; image-rendering: pixelated; }
+.gear-body { display: grid; grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(280px, 360px); gap: 16px; flex: 1 1 auto; min-height: 0; }
+.doll, .bag, .detail { min-width: 0; min-height: 0; overflow: auto; background: #0b0811; border: 1px solid var(--line); padding: 12px; }
+.doll canvas { display: block; margin: 0 auto 8px; image-rendering: pixelated; width: 120px; height: 150px; }
+.slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.slot, .tile { position: relative; aspect-ratio: 1; background: #120e1a; border: 2px solid var(--r); display: grid; place-items: center; padding: 0; color: var(--ash); transition: transform .12s, box-shadow .15s; }
+.slot img, .tile img { width: 70%; height: 70%; image-rendering: pixelated; }
+.slot span { position: absolute; bottom: 1px; left: 0; right: 0; font-size: 10px; text-align: center; color: var(--mute); }
+.slot .ghosticon { opacity: .18; }
+.slot:hover, .tile:hover { transform: translateY(-2px); box-shadow: 0 0 12px color-mix(in srgb, var(--r) 40%, transparent); }
+.slot.sel, .tile.sel { outline: 2px solid var(--bone); outline-offset: 1px; }
+.up { position: absolute; top: 1px; right: 3px; font-style: normal; font-size: 12px; color: var(--bone); text-shadow: 1px 1px 0 #000; }
+.inf { position: absolute; top: 4px; left: 4px; width: 7px; height: 7px; background: var(--e); box-shadow: 0 0 6px var(--e); transform: rotate(45deg); }
+.eq { position: absolute; bottom: 2px; right: 3px; font-style: normal; font-size: 11px; color: var(--gold); }
+.gstats { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+.gstats dd { font-size: 15px; }
+.gstats .wide { grid-column: span 2; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.chip { background: transparent; border: 1px solid var(--line); padding: 5px 12px; color: var(--ash); }
+.chip.on { border-color: var(--bone); color: var(--bone); }
+.filters .count { margin-left: auto; color: var(--mute); font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+.grid .empty, .detail .hint { color: var(--mute); grid-column: 1 / -1; line-height: 1.5; }
+.detail h3 { margin: 4px 0 8px; font-size: 22px; line-height: 1.15; text-wrap: balance; }
+.detail .main { margin: 0 0 6px; color: var(--bone); }
+.detail .main.relic { color: var(--gold); }
+.detail .aff, .detail .cmp { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 3px; }
+.detail .aff li::before { content: '· '; color: var(--mute); }
+.detail .cmp { border-top: 1px solid var(--line); padding-top: 8px; }
+.detail .inf-line { margin: 6px 0; }
+.detail .row { display: flex; gap: 8px; margin: 10px 0; }
+.detail .row button:not(.ghost) { font-size: 16px; padding: 10px 18px; }
+.forge { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; display: grid; gap: 6px; }
+.forge h4 { margin: 0; color: var(--gold); letter-spacing: .1em; text-transform: uppercase; font-weight: 400; }
+.forge > button:not(.ghost) { background: var(--gold); color: var(--void); border: 0; padding: 10px; font-size: 16px; }
+.forge .cost { margin: 0; color: var(--mute); font-size: 13px; }
+.forge .sub { margin: 6px 0 0; color: var(--ash); }
+.elems { display: flex; gap: 6px; }
+.elem { width: 44px; height: 44px; border: 2px solid var(--e); background: #120e1a; display: grid; place-items: center; padding: 0; }
+.elem img { width: 28px; height: 28px; image-rendering: pixelated; }
+.roots { display: grid; gap: 6px; }
+.root { text-align: left; background: #120e1a; border: 1px solid #5c4a2a; padding: 8px 10px; display: grid; gap: 2px; color: var(--bone); }
+.root b { color: #ffb347; font-weight: 400; }
+.root span { color: var(--ash); font-size: 13px; }
+.elem:disabled, .root:disabled { opacity: .3; }
+#bf-forge { margin-top: 4px; }
+@media (max-width: 1000px) {
+  /* phone / tablet: one scrolling column, compact slot strip */
+  .overlay.gear { gap: 8px; }
+  .gear-head h2 { font-size: 16px; }
+  .gear-body { display: flex; flex-direction: column; flex: none; min-height: auto; gap: 10px; }
+  .doll, .bag, .detail { overflow: visible; flex: none; }
+  .doll { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .doll canvas { width: 72px; height: 90px; margin: 0; }
+  .slots { grid-template-columns: repeat(4, minmax(0, 60px)); }
+  .gstats { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); }
+}
+}

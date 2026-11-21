@@ -65,17 +65,41 @@ export function bake(rows, opts = {}) {
     wg.fillRect(x, y, 1, 1);
     if (col !== OUTLINE) pixels.push({ x, y, c: col });
   }
-  // anchor: bottom centre (feet), like every frame shares one delivery canvas
-  return { c, white: wc, w, h, ox: Math.floor(w / 2), oy: h - 1, pixels };
+  // canvases are stored at RES x density (Scale2x): smoother diagonals, same pixel-art grid.
+  // w/h/ox/oy stay in WORLD units — always draw with drawImage(spr.c, x, y, spr.w, spr.h).
+  return { c: scale2x(c), white: scale2x(wc), w, h, ox: Math.floor(w / 2), oy: h - 1, pixels };
+}
+
+// internal render resolution: buffer pixels per world unit
+export const RES = 2;
+export const rp = (v) => Math.round(v * RES) / RES;
+
+// EPX / Scale2x: doubles pixel art without blur, rounding stair-steps on diagonals.
+export function scale2x(src) {
+  const w = src.width, h = src.height;
+  const sd = new Uint32Array(src.getContext('2d').getImageData(0, 0, w, h).data.buffer);
+  const out = mk(w * 2, h * 2), og = out.getContext('2d');
+  const img = og.createImageData(w * 2, h * 2), od = new Uint32Array(img.data.buffer);
+  const at = (x, y) => sd[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const P = sd[y * w + x], A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+    const o = y * 2 * w * 2 + x * 2;
+    od[o] = C === A && C !== D && A !== B ? A : P;
+    od[o + 1] = A === B && A !== C && B !== D ? B : P;
+    od[o + w * 2] = D === C && D !== B && C !== A ? C : P;
+    od[o + w * 2 + 1] = B === D && B !== A && D !== C ? D : P;
+  }
+  og.putImageData(img, 0, 0);
+  return out;
 }
 
 // Tinted silhouette (for elite auras, ghost echoes).
 export function tint(spr, color) {
-  const c = mk(spr.w, spr.h);
+  const c = mk(spr.white.width, spr.white.height);
   const g = c.getContext('2d');
   g.drawImage(spr.white, 0, 0);
   g.globalCompositeOperation = 'source-in';
-  g.fillStyle = color; g.fillRect(0, 0, spr.w, spr.h);
+  g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
   return c;
 }
 
@@ -92,23 +116,25 @@ export function drawSprite(ctx, spr, x, y, o = {}) {
   const sx = (o.flip ? -1 : 1) * (o.sx ?? 1), sy = o.sy ?? 1;
   const img = o.white ? spr.white : spr.c;
   ctx.save();
-  ctx.translate(Math.round(x), Math.round(y));
+  ctx.translate(rp(x), rp(y));
   if (o.rot) ctx.rotate(o.rot);
   ctx.scale(sx, sy);
   if (o.alpha !== undefined) ctx.globalAlpha *= o.alpha;
-  ctx.drawImage(o.img || img, -spr.ox, -spr.oy);
+  ctx.drawImage(o.img || img, -spr.ox, -spr.oy, spr.w, spr.h);
   ctx.restore();
 }
 
 // Crisp pixel-perfect filled circle / ellipse (no AA) — used for telegraphs, shadows, nodes.
+// resolution-aware: rows are 1 buffer pixel (1/RES world units) tall
 export function pcircle(ctx, cx, cy, r, ry = r) {
-  cx = Math.round(cx); cy = Math.round(cy);
-  const R = Math.max(0.5, r), RY = Math.max(0.5, ry);
+  const k = RES;
+  cx = Math.round(cx * k); cy = Math.round(cy * k);
+  const R = Math.max(0.5, r * k), RY = Math.max(0.5, ry * k);
   for (let y = -Math.ceil(RY); y <= Math.ceil(RY); y++) {
     const t = 1 - (y * y) / (RY * RY);
     if (t < 0) continue;
     const hw = Math.round(R * Math.sqrt(t));
-    ctx.fillRect(cx - hw, cy + y, hw * 2 + 1, 1);
+    ctx.fillRect((cx - hw) / k, (cy + y) / k, (hw * 2 + 1) / k, 1 / k);
   }
 }
 export function pring(ctx, cx, cy, r, th = 1) {
