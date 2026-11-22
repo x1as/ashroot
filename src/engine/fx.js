@@ -20,7 +20,7 @@ export function burst(x, y, n, color, speed = 60, o = {}) {
   for (let i = 0; i < n; i++) {
     const a = o.ang !== undefined ? o.ang + rand(-o.spread, o.spread) : rand(TAU);
     const s = rand(speed * 0.3, speed);
-    part({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, o.life || 0.6), color, size: o.size || (Math.random() < 0.3 ? 2 : 1), drag: o.drag ?? 4, grav: o.grav ?? 0, glow: o.glow, vz: o.vz ? rand(o.vz * 0.5, o.vz) : 0 });
+    part({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(0.25, o.life || 0.6), color, size: o.size || (Math.random() < 0.35 ? 2.5 : 1.5), drag: o.drag ?? 4, grav: o.grav ?? 0, glow: o.glow, vz: o.vz ? rand(o.vz * 0.5, o.vz) : 0 });
   }
 }
 // sprite dissolve: every pixel of the sprite flies off — enemies "crumble to ash"
@@ -36,8 +36,13 @@ export function dissolve(spr, x, y, flip, dirX = 0, dirY = 0, tintCol) {
 }
 export function ring(x, y, r0, r1, life, color, th = 1) { G.rings.push({ x, y, r0, r1, t: 0, life, color, th }); }
 export function smear(x, y, a0, a1, r0, r1, life, color) { G.arcs.push({ x, y, a0, a1, r0, r1, t: 0, life, color }); }
-export function text(x, y, txt, color = '#ece4d0', big = false) {
-  G.texts.push({ x: x + rand(-3, 3), y, txt: String(txt), color, t: 0, life: big ? 1.0 : 0.75, big, vx: rand(-12, 12) });
+export function text(x, y, txt, color = '#ece4d0', big = false, key = null) {
+  // hits on the same target within 0.4 s merge into one growing number instead of a cloud of digits
+  if (key && typeof txt === 'number') {
+    const prev = G.texts.find((t) => t.key === key && t.t < 0.4);
+    if (prev) { prev.val += txt; prev.txt = String(Math.round(prev.val)); prev.t = 0.02; prev.x = x; prev.y = y; prev.big = prev.big || big; prev.color = big ? color : prev.color; prev.pop = 1; return; }
+  }
+  G.texts.push({ x: x + rand(-2, 2), y, txt: String(txt), val: typeof txt === 'number' ? txt : 0, key, color, t: 0, life: big ? 1.1 : 0.85, big, vx: rand(-8, 8), pop: 1 });
   if (G.texts.length > 60) G.texts.shift();
 }
 export function banner(title, sub = '', color = '#ece4d0', life = 2.4) { G.banner = { title, sub, color, t: 0, life }; }

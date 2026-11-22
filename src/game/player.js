@@ -11,6 +11,7 @@ import { burst, smear, ring, shake, text, kick, part, flash } from '../engine/fx
 import { sfx } from '../engine/audio.js';
 import { SPR, heroFrames } from '../art/bank.js';
 import { collide, moveCollide, tileAt, T, TS, spikeState, solidT } from './world.js';
+import { hitProp } from './props.js';
 import { hitEnemy, hurtPlayer, lv, reso, nova, dotScale, floorScale, bolt, chillE } from './combat.js';
 
 // look of the hero from the equipped armour weights + weapon infusion
@@ -282,6 +283,11 @@ function strike(P) {
     any = true;
     slashMark(e.x, e.y - 6, P.face + Math.PI / 2 + rand(-0.4, 0.4), heavy ? 9 : 6);
     hitEnemy(e, a.dmg, { type: P.C.dmgType, knock: heavy ? 90 : 35, heavy, shieldBreak: P.C.guardBreak && heavy, poiseMul: a.finisher ? 1.5 : 1 });
+  }
+  for (const pr of G.room.props || []) {
+    if (pr.dead || dist(P.x, P.y - 4, pr.x, pr.y - 4) > r + pr.r) continue;
+    if (a.arc < 360 && Math.abs(angDiff(P.face, angTo(P.x, P.y - 4, pr.x, pr.y - 4))) > half + arcW + 0.2) continue;
+    hitProp(pr);
   }
   if (any && heavy) shake(0.2);
   kick(Math.cos(P.face), Math.sin(P.face), heavy ? 2.5 : 1);

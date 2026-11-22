@@ -4,7 +4,7 @@ const BUFFER = 0.15;
 const KEYMAP = {
   KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
   Space: 'dodge', ShiftLeft: 'dodge', ShiftRight: 'dodge', KeyJ: 'attack', KeyK: 'dodge', KeyE: 'skill', KeyL: 'skill',
-  KeyQ: 'flask', KeyR: 'flask', Escape: 'pause', KeyP: 'pause', Enter: 'confirm', KeyF: 'interact',
+  KeyQ: 'flask', KeyR: 'flask', Escape: 'pause', KeyP: 'pause', Enter: 'confirm', KeyF: 'interact', KeyI: 'inv', Tab: 'inv',
   Digit1: 'c1', Digit2: 'c2', Digit3: 'c3', Digit4: 'c4',
 };
 

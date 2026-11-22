@@ -27,7 +27,7 @@ function resize() {
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
   canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
   // k = device pixels per buffer pixel (integer = crisp), RES buffer pixels per world unit (Scale2x art)
-  const k = Math.max(1, Math.round(Math.min(cw * dpr, ch * dpr) / (220 * RES)));
+  const k = Math.max(1, Math.round(Math.min(cw * dpr, ch * dpr) / (180 * RES)));
   const scale = k * RES;
   Object.assign(G.view, { cw, ch, dpr, scale, k, w: Math.ceil((cw * dpr) / scale), h: Math.ceil((ch * dpr) / scale) });
   const probe = getComputedStyle(document.getElementById('safe'));
@@ -66,6 +66,7 @@ function frame(now, manual) {
   G.real += rdt;
   input.update(rdt);
   if (input.pressed('pause')) ui.togglePause();
+  if (input.pressed('inv') && G.mode === 'game' && !G.paused && G.real - (G.gearClosedAt || -9) > 0.25) ui.showGear({ forge: false });
   if (G.mode === 'menu') {
     updateMenu(rdt);
     renderMenu(ctx);
@@ -102,5 +103,5 @@ function installDebug() {
 window.__dbg = { makeItem, equipItem, tick: (sec) => { for (let i = 0; i < sec * 60; i++) frame(0, true); }, enterRoom, startRun, openExits, killEnemy, input, updateGame, ui, updateFlow, flowDir, los };
 
 // wait for the pixel font (max 1.5 s, then boot with the fallback)
-const fontReady = document.fonts?.load ? Promise.all([document.fonts.load('16px "Tiny5"'), document.fonts.load('16px "Press Start 2P"')]).catch(() => {}) : Promise.resolve();
+const fontReady = document.fonts?.load ? Promise.all([document.fonts.load('16px "PT Sans"'), document.fonts.load('700 16px "PT Sans"'), document.fonts.load('16px "Forum"')]).catch(() => {}) : Promise.resolve();
 Promise.race([fontReady, new Promise((r) => setTimeout(r, 1500))]).then(boot);

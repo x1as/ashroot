@@ -14,6 +14,7 @@ import { input } from '../engine/input.js';
 import { weighted, rand, shuffle } from '../engine/util.js';
 import { later } from './combat.js';
 import { emit } from './events.js';
+import { placeProps } from './props.js';
 
 const DRONES = [55, 49, 41, 61, 36.7];
 
@@ -102,6 +103,7 @@ export function enterRoom(idx) {
   G.tokens = 0; G.delayed = [];
   const R = makeRoom(plan.id, F.theme, F.terrain);
   G.room = R;
+  placeProps(R);
   const P = G.player;
   P.x = R.entry.x; P.y = R.entry.y; P.vx = 0; P.vy = -40; P.setState('move'); P.face = -Math.PI / 2;
   P.lastSafe = { x: P.x, y: P.y };
@@ -140,16 +142,27 @@ export function updateRoom(dt) {
   const alive = G.enemies.filter((e) => !e.dead);
   if (!S.cleared && R.plan !== 'boss') {
     S.timer += dt;
-    const nextReady = S.wave < 0 ? S.t > 0.7 : alive.length <= (S.wave === 0 ? 1 : 0) && S.wave < S.waves.length - 1;
-    if (nextReady && S.wave < S.waves.length - 1) {
-      S.wave++;
-      for (const [type, elite] of S.waves[S.wave]) {
-        const p = spawnPoint(R, P.x, P.y, 100);
-        G.enemies.push(createEnemy(type, p.x, p.y, { elite, dmgMul: r.cursed && R.plan === 'arena' ? 1.25 : 1 }));
-      }
-    } else if (S.wave === S.waves.length - 1 && alive.length === 0) {
-      S.cleared = true; onCleared();
+    // waves: the next one comes when <=30% of the current is left, or after 14 s of pressure
+    S.waveT = (S.waveT || 0) + dt;
+    const last = S.wave >= S.waves.length - 1;
+    const curN = S.wave >= 0 ? S.waves[S.wave].length : 0;
+    const left = alive.length + (S.queue ? S.queue.length : 0);
+    const nextReady = S.wave < 0 ? S.t > 0.7 : !last && (left <= Math.floor(curN * 0.3) || S.waveT > 14);
+    if (nextReady) {
+      S.wave++; S.waveT = 0;
+      S.queue = (S.queue || []).concat(S.waves[S.wave].map((w) => w.slice()));
+      S.spawnT = 0;
+      if (S.waves.length > 1) banner(`Волна ${S.wave + 1} из ${S.waves.length}`, '', '#ece4d0', 1.1);
     }
+    // spawn the queue one by one (fair, readable entrances), never more than 9 alive
+    S.spawnT = (S.spawnT || 0) - dt;
+    if (S.queue && S.queue.length && S.spawnT <= 0 && alive.length < 9) {
+      const [type, elite] = S.queue.shift();
+      const p = spawnPoint(R, P.x, P.y, 100);
+      G.enemies.push(createEnemy(type, p.x, p.y, { elite, dmgMul: r.cursed && R.plan === 'arena' ? 1.25 : 1 }));
+      S.spawnT = 0.28;
+    }
+    if (last && alive.length === 0 && !(S.queue && S.queue.length)) { S.cleared = true; onCleared(); }
   }
   G.enemies = G.enemies.filter((e) => !e.dead || false);
   if (S.cleared && !S.rewardShown && S.clearT !== undefined) {
@@ -173,7 +186,7 @@ export function updateRoom(dt) {
 function onCleared() {
   const R = G.room, S = R.state, r = G.run;
   S.clearT = 0.9;
-  const par = 20 + r.floor * 6 + (R.plan === 'arena' ? 15 : 0);
+  const par = 50 + r.floor * 6 + (R.plan === 'arena' ? 15 : 0);
   emit('roomClear', { floor: r.floor, plan: R.plan, time: S.timer, courage: S.timer < par && R.plan !== 'fork' });
   if (S.timer < par && R.plan !== 'fork') {
     const bonus = Math.round(4 + r.floor * 2);

@@ -85,7 +85,7 @@ export function hitEnemy(e, base, o = {}) {
     const col = blocked ? '#8189a0' : crit ? '#ffd36b' : TYPE_COL[type];
     burst(e.x, e.y - 6, crit ? 9 : 5, col, crit ? 110 : 70, { ang: ka, spread: 0.9 });
     if (!blocked) burst(e.x, e.y - 4, 3, e.def.blood || '#8c1c33', 40, { ang: ka, spread: 0.5, grav: 60 });
-    text(e.x, e.y - 18, blocked ? 'блок' : d, col, crit);
+    text(e.x, e.y - 18, blocked ? 'блок' : d, col, crit, blocked ? null : e);
     if (counter) { emit('counter', { type: e.type }); text(e.x, e.y - 28, 'КОНТР', '#ffffff', true); sfx.counter(); hitstop(0.1); ring(e.x, e.y - 6, 4, 26, 0.3, '#ffffff'); flash('#ffffff', 0.15); }
     else if (blocked) { sfx.block(); hitstop(0.03); }
     else { sfx.hit(crit); hitstop(crit ? 0.06 : o.heavy ? 0.07 : 0.035); }
@@ -99,7 +99,7 @@ export function hitEnemy(e, base, o = {}) {
     }
     if (!o.noProc && !blocked) procs(e, d, crit, o);
   } else {
-    if (Math.random() < 0.5) text(e.x, e.y - 16, d, TYPE_COL[type], false);
+    text(e.x, e.y - 16, d, TYPE_COL[type], false, (e.dotTag ||= {}));
   }
   if (e.hp <= 0) killEnemy(e, { dirX: Math.cos(fromAng + Math.PI), dirY: Math.sin(fromAng + Math.PI) });
   return d;
@@ -302,12 +302,12 @@ export function perfectDodge() {
 }
 
 // enemy-owned AoE resolution
-export function enemyBlast(x, y, r, dmg, color, hurtsEnemies) {
+export function enemyBlast(x, y, r, dmg, color, hurtsEnemies, enemyDmg = dmg) {
   ring(x, y, 2, r, 0.3, color, 2);
   burst(x, y, 18, color, r * 2.5, { glow: true });
   sfx.boom(); shake(0.25);
   const P = G.player;
   if (P && dist(x, y, P.x, P.y) < r + 3) hurtPlayer(dmg, x, y);
-  if (hurtsEnemies) for (const e of G.enemies) if (!e.dead && !e.isBoss && dist(x, y, e.x, e.y) < r) { e.hp -= dmg; e.flash = 0.1; if (e.hp <= 0) killEnemy(e); }
+  if (hurtsEnemies) for (const e of G.enemies) if (!e.dead && !e.isBoss && dist(x, y, e.x, e.y) < r) { e.hp -= enemyDmg; e.flash = 0.1; e.burn = Math.max(e.burn, color === '#ff8f3a' ? 2 : 0); if (e.hp <= 0) killEnemy(e); }
 }
 export { RESONANCE, clamp };

@@ -85,7 +85,7 @@ export const ui = {
       P.hp = Math.min(P.s.maxHp, P.hp + P.s.maxHp * 0.5); P.flasks = Math.min(P.s.flasks, P.flasks + 1);
       sfx.flask(); text(P.x, P.y - 26, '+50% HP, +1 нектар', '#b4ec5f', true); done();
     };
-    $('bf-forge').onclick = () => { $('bonfire').hidden = true; showGear({ forge: true, onClose: () => { $('bonfire').hidden = false; G.paused = true; document.body.classList.add('overlay'); } }); };
+    $('bf-forge').onclick = () => { $('bonfire').hidden = true; showGear({ forge: true, tab: 'forge', onClose: () => { $('bonfire').hidden = false; G.paused = true; document.body.classList.add('overlay'); } }); };
     $('bf-sac').onclick = () => {
       closeOverlay('bonfire');
       ui.showCards({ title: 'Жертва: дар без отдыха', offer: rollOffer(P.s.cards + 1), canRest: false, picksLeft: 1, onDone: () => { openExits(G.room); sfx.door(); } });

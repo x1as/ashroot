@@ -53,49 +53,40 @@ export const FLOORS = [
 
 const MELEE = ['husk', 'hound', 'shield', 'knight', 'bomber'];
 
-// Returns waves: [[type, elite?], ...][]. Deterministic shape, random fill.
+// Returns waves: [[type, elite?], ...][]. Rooms now hold ~60 s: 3-4 waves that escalate (Interest Curve inside
+// the room too: a readable opener, a mixed middle, a heavy last wave). Kishōtenketsu shape per room is kept.
 export function composeRoom(floorIdx, roomIdx, opts = {}) {
   const F = FLOORS[floorIdx], f = floorIdx + 1;
   const plan = ROOM_PLAN[roomIdx].id;
   const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const melee = F.pool.filter((t) => MELEE.includes(t));
   const ranged = F.ranged.length ? F.ranged : ['hound'];
+  // new enemies of this floor appear twice as often
+  const any = () => (Math.random() < 0.4 ? rnd(F.fresh) : rnd(F.pool));
   const W = (list) => list.map((t) => (Array.isArray(t) ? t : [t, false]));
+  const fill = (n, fn) => Array.from({ length: n }, fn);
+  const g = Math.floor((f - 1) / 2); // +1 enemy per wave every two floors
   switch (plan) {
     case 'meet': {
-      // the new enemy alone first, then the second new enemy with one familiar face
       const [a, b] = F.fresh;
-      const w1 = [a];
-      const w2 = b ? [b, b] : [a, rnd(melee)];
-      if (f >= 3) w2.push(rnd(F.pool));
-      return [W(w1), W(w2)];
+      return [W([a]), W([b || a, b || a, rnd(melee)]), W(fill(4 + g, any)), W(fill(4 + g, any).concat([a]))];
     }
-    case 'terrain': {
-      const n = 3 + Math.floor(f / 2);
-      const w1 = Array.from({ length: n }, (_, i) => (i < 2 ? F.fresh[i % F.fresh.length] : rnd(melee)));
-      const w2 = Array.from({ length: n - 1 }, () => rnd(F.pool));
-      return [W(w1), W(w2)];
-    }
-    case 'twist': {
-      // ten: different attack ranges at once — the real test of positioning
-      const w1 = [rnd(melee), rnd(melee), rnd(ranged)];
-      const w2 = [rnd(ranged), rnd(melee), F.fresh[0]];
-      if (f >= 2) w1.push(rnd(ranged));
-      if (f >= 3) w2.push(rnd(melee), rnd(ranged));
-      if (f >= 4) w2.push([rnd(melee), true]);
-      return [W(w1), W(w2)];
-    }
-    case 'fork': {
-      // breather: a small, readable wave before the route choice
-      return [W([rnd(melee), rnd(F.pool)].slice(0, f >= 3 ? 2 : 1).concat(f >= 4 ? [rnd(F.pool)] : []))];
-    }
+    case 'terrain':
+      return [W(fill(4 + g, () => rnd(melee))), W(fill(4 + g, any)), W(fill(5 + g, any)), W(fill(5 + g, any))];
+    case 'twist':
+      return [
+        W([rnd(melee), rnd(melee), rnd(ranged), rnd(ranged)]),
+        W(fill(3 + g, () => rnd(melee)).concat([rnd(ranged), F.fresh[0]])),
+        W(fill(3 + g, () => rnd(ranged)).concat([rnd(melee), rnd(melee)])),
+        W(fill(5 + g, any).concat(f >= 3 ? [[rnd(melee), true]] : [])),
+      ];
+    case 'fork':
+      // breather: two light waves before the route choice
+      return [W(fill(2 + g, () => rnd(melee))), W(fill(3 + g, any))];
     case 'arena': {
-      const boss = [F.fresh[0], true];
-      const w1 = [boss, rnd(melee)];
-      const w2 = [rnd(ranged), rnd(melee), rnd(F.pool)];
-      if (f >= 3) w2.push(rnd(F.pool));
-      if (opts.cursed) { w2.push([rnd(F.pool), true]); w1.push(rnd(ranged)); }
-      return [W(w1), W(w2)];
+      const w = [W([[F.fresh[0], true], rnd(melee), rnd(ranged)]), W(fill(4 + g, any)), W(fill(4 + g, any).concat([[rnd(F.pool), true]])), W(fill(5 + g, any))];
+      if (opts.cursed) { w[1].push([rnd(F.pool), true]); w[3].push([rnd(F.pool), true]); }
+      return w;
     }
     default:
       return [];

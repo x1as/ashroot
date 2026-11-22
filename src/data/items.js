@@ -130,6 +130,23 @@ export const RESOURCES = {
 export const RES_ORDER = ['bone', 'resin', 'shard', 'heart', 'e_blood', 'e_fire', 'e_frost', 'e_storm', 'e_shadow'];
 export const BOSS_ELEMENT = { warden: 'blood', singer: 'storm', smith: 'fire', widow: 'frost', heart: 'shadow' };
 
+// one line of myth per item type, shown on the item plate
+export const FLAVOR = {
+  w_sword: 'Короткий меч гоплита. Им сражались у Фермопил.', w_dagger: 'Изогнутые клинки охотников Аркадии.',
+  w_great: 'Палица из дикой оливы: Геракл срубил её у Немеи.', w_staff: 'Посох жриц Гекаты, богини перекрёстков и чар.',
+  w_bow: 'Лук, подаренный Аполлоном. Стрелы помнят яд Гидры.', h_light: 'Войлочная шапка путника и пастуха.',
+  h_medium: 'Открытый шлем с нащёчниками, его любили в Халкиде.', h_heavy: 'Глухой шлем с гребнем. Лицо видно лишь в прорезь.',
+  c_light: 'Простой хитон. Лёгкость дороже защиты.', c_medium: 'Склеенные слои льна: доспех Александра.',
+  c_heavy: 'Бронзовая кираса, выкованная по мышцам героя.', g_light: 'Ремни кулачного бойца, как у Полидевка.',
+  g_medium: 'Кожаные наручи с бронзовыми пластинами.', g_heavy: 'Бронзовые рукавицы: держат удар молота.',
+  b_light: 'Сандалии с ремнями до колена.', b_medium: 'Высокие эндромиды охотницы Аталанты.',
+  b_heavy: 'Бронзовые поножи. Защищают голень гоплита.', a_amulet: 'Лик Медузы: отвращает зло и взгляды.',
+  r_ring: 'Перстень с печатью. Гиг стал невидим, повернув такой.', x_relic: 'Вещь, которую помнят мифы.',
+};
+export const SLOT_WEIGHT = { weapon: 1.6, helm: 0.7, chest: 1, gloves: 0.6, boots: 0.7, amulet: 0.8, ring: 0.8, relic: 1.1 };
+// one comparable number per item ("Мощь"): base power x rarity x upgrades x number of properties x slot weight
+export const itemScore = (it) => Math.round(100 * (1 + 0.1 * (it.ilvl - 1)) * RARITY[it.rarity].mul * (1 + 0.08 * it.up) * (1 + 0.18 * it.affixes.length + (it.infuse ? 0.15 : 0)) * SLOT_WEIGHT[it.slot]);
+
 export const itemPower = (it) => (1 + 0.1 * (it.ilvl - 1)) * RARITY[it.rarity].mul * (1 + 0.08 * it.up);
 
 // ---------------- forge costs ----------------

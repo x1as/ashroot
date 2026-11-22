@@ -6,7 +6,7 @@ export const TS = 16;
 export const T = { FLOOR: 0, WALL: 1, PILLAR: 2, CHASM: 3, SPIKE: 4 };
 export const SPIKE_CYCLE = 2.4, SPIKE_WARN = 1.4, SPIKE_UP = 2.0; // down -> warn (tips) -> up (hurts)
 
-const SIZES = { meet: [22, 14], terrain: [24, 16], twist: [24, 16], fork: [18, 12], arena: [26, 17], bonfire: [16, 11], boss: [28, 19] };
+const SIZES = { meet: [26, 16], terrain: [28, 18], twist: [28, 18], fork: [22, 14], arena: [30, 19], bonfire: [18, 12], boss: [30, 20] };
 
 export function makeRoom(planId, theme, terrain, seed = (Math.random() * 1e9) | 0) {
   const [w, h] = SIZES[planId];
@@ -239,19 +239,42 @@ function bakeRoom(R) {
       }
     }
   }
+  // floor mosaic: a meander (Greek key) frame and a sun disc in the middle of every hall
+  {
+    const mx0 = 5 * TS, my0 = 5 * TS, mx1 = (w - 5) * TS, my1 = (h - 4) * TS;
+    const tile = (x, y) => at(Math.floor(x / TS), Math.floor(y / TS));
+    const col = shade(theme.wall[2], 0.75), col2 = shade(theme.floor[0], 0.7);
+    const put = (x, y, c) => { if (tile(x, y) === T.FLOOR) { g.fillStyle = c; g.fillRect(x, y, 1, 1); } };
+    if (mx1 - mx0 > 60 && my1 - my0 > 40 && R.plan !== 'terrain') {
+      const key = ['111111', '100001', '101101', '101001', '101111', '100000'];
+      for (let x = mx0; x < mx1; x++) for (let k = 0; k < 6; k++) { const bit = key[k][(x - mx0) % 6] === '1'; put(x, my0 + k, bit ? col : col2); put(x, my1 - 1 - k, bit ? col : col2); }
+      for (let y = my0; y < my1; y++) for (let k = 0; k < 6; k++) { const bit = key[k][(y - my0) % 6] === '1'; put(mx0 + k, y, bit ? col : col2); put(mx1 - 1 - k, y, bit ? col : col2); }
+      const cxm = (mx0 + mx1) / 2, cym = (my0 + my1) / 2;
+      for (let y = -14; y <= 14; y++) for (let x = -14; x <= 14; x++) {
+        const d = Math.hypot(x, y), a = Math.atan2(y, x);
+        if (d < 5) put(cxm + x, cym + y, shade(theme.accent, 0.45));
+        else if (d < 14 && Math.abs(Math.sin(a * 6)) > 0.75 && d > 7) put(cxm + x, cym + y, shade(theme.accent, 0.3));
+        else if (Math.abs(d - 6) < 0.6) put(cxm + x, cym + y, col);
+      }
+    }
+  }
   // pillars: face in footprint (bg), cap above footprint (overlay) => correct 3/4 occlusion
   for (let ty = 0; ty < h; ty++) for (let tx = 0; tx < w; tx++) {
     if (at(tx, ty) !== T.PILLAR) continue;
     const X = tx * TS, Y = ty * TS;
-    g.fillStyle = w0; g.fillRect(X + 1, Y, TS - 2, TS - 2);
-    g.fillStyle = w1; for (let r = 0; r < 3; r++) g.fillRect(X + 1, Y + 4 + r * 4, TS - 2, 1);
-    g.fillRect(X + 1, Y, 1, TS - 2);
-    g.fillStyle = w2; g.fillRect(X + TS - 3, Y, 1, TS - 3);
-    g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(X, Y + TS - 2, TS, 3);
-    o.fillStyle = shade(w2, 0.9); o.fillRect(X, Y - 10, TS, 10);
-    o.fillStyle = w2; o.fillRect(X + 1, Y - 10, TS - 2, 1);
-    o.fillStyle = shade(w0, 0.8); o.fillRect(X, Y - 1, TS, 1);
-    for (let i = 0; i < 5; i++) { o.fillStyle = shade(w2, 1.2); o.fillRect(X + 2 + ((rnd() * 11) | 0), Y - 8 + ((rnd() * 6) | 0), 1, 1); }
+    // Doric column: fluted shaft (light from the left), base slab; capital + abacus drawn over actors
+    const marble = ['#d9d0bd', '#b8ad97', '#8f8573', '#625a4d'];
+    g.fillStyle = marble[3]; g.fillRect(X, Y + TS - 3, TS, 3);
+    g.fillStyle = marble[2]; g.fillRect(X + 1, Y + TS - 4, TS - 2, 1);
+    for (let i = 0; i < 12; i++) { g.fillStyle = marble[i < 3 ? 0 : i < 7 ? 1 : i < 10 ? 2 : 3]; g.fillRect(X + 2 + i, Y - 2, 1, TS - 2); }
+    g.fillStyle = marble[3]; for (let i = 3; i < 12; i += 3) g.fillRect(X + 2 + i, Y - 2, 1, TS - 2);
+    if (rnd() < 0.4) { g.fillStyle = marble[3]; let cx = X + 4 + rnd() * 6, cy = Y + 2; for (let i = 0; i < 6; i++) { g.fillRect(cx | 0, cy | 0, 1, 1); cx += rnd() - 0.5; cy += 1; } }
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(X + TS, Y + 2, 3, TS - 2);
+    o.fillStyle = marble[2]; o.fillRect(X + 1, Y - 6, TS - 2, 4);
+    o.fillStyle = marble[1]; o.fillRect(X + 2, Y - 6, TS - 4, 1);
+    o.fillStyle = marble[1]; o.fillRect(X - 1, Y - 10, TS + 2, 4);
+    o.fillStyle = marble[0]; o.fillRect(X - 1, Y - 10, TS + 2, 1);
+    o.fillStyle = marble[3]; o.fillRect(X - 1, Y - 7, TS + 2, 1);
   }
   // top wall cap overlays entities walking right under it
   for (let tx = 0; tx < w; tx++) { o.fillStyle = '#0c0912'; o.fillRect(tx * TS, 0, TS, TS - 4); o.fillStyle = shade(w0, 0.5); o.fillRect(tx * TS, TS - 5, TS, 1); }

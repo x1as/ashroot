@@ -51,24 +51,14 @@
   <button id="end-again">Восстать из пепла</button>
 </section>
 
-<section id="gear" class="overlay gear" hidden>
+<section id="gear" class="overlay gear" hidden aria-label="Сокровищница">
   <header class="gear-head">
-    <h2 id="gear-title">Снаряжение</h2>
+    <h2 id="gear-title">Сокровищница</h2>
+    <nav id="gear-tabs" class="tabs" aria-label="Разделы"></nav>
     <div id="gear-res" class="gear-res"></div>
     <button id="gear-close" class="ghost">Закрыть</button>
   </header>
-  <div class="gear-body">
-    <div class="doll">
-      <canvas id="gear-hero" width="120" height="150"></canvas>
-      <div id="gear-slots" class="slots"></div>
-      <dl id="gear-stats" class="stats gstats"></dl>
-    </div>
-    <div class="bag">
-      <div id="gear-filters" class="filters"></div>
-      <div id="gear-grid" class="grid"></div>
-    </div>
-    <aside id="gear-detail" class="detail"></aside>
-  </div>
+  <div id="gear-main" class="gear-main"></div>
 </section>
 
 <div id="touch">

@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const body = read('src/body.html');
 const css = read('src/style.css');
-const FONT = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiny5&family=Press+Start+2P&display=swap">';
+const FONT = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Forum&family=PT+Sans:wght@400;700&display=swap">';
 const HEAD = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"><meta name="theme-color" content="#07050c">`;
 
 fs.writeFileSync(path.join(root, 'index.html'), `<!doctype html>

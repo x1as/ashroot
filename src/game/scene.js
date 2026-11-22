@@ -6,6 +6,8 @@ import { input } from '../engine/input.js';
 import { damp, dist, angTo, TAU, clamp, ease, rand } from '../engine/util.js';
 import { drawSprite, pcircle, RES, rp } from '../engine/sprite.js';
 import { addItem, addMats } from './items.js';
+import { itemIcon } from '../art/items.js';
+import { lootToast, matFeed } from '../ui/toast.js';
 import { RARITY, RESOURCES, BASES } from '../data/items.js';
 import { updateFx, drawParts, drawArcs, drawRings, shakeOffset, burst, shadow, ring, text } from '../engine/fx.js';
 import { sfx } from '../engine/audio.js';
@@ -16,6 +18,7 @@ import { updateEnemy, drawEnemy, drawTelegraph } from './enemy.js';
 import { updateBoss, drawBoss, drawBossTele } from './boss.js';
 import { hitEnemy, hurtPlayer, updateDelayed, enemyBlast, killEnemy, lv, chillE } from './combat.js';
 import { updateRoom, takeExit } from './run.js';
+import { drawProp, hitProp, pushOut } from './props.js';
 import { drawHUD } from '../ui/hud.js';
 import { FLOORS } from '../data/floors.js';
 
@@ -49,6 +52,7 @@ export function updateGame(dt) {
   updateDelayed(dt);
   updateFx(dt);
   updateRoom(dt);
+  pushOut(P); for (const e of G.enemies) if (!e.dead && !e.isBoss) pushOut(e);
   // safety net: nothing may ever leave the room
   const out = (e) => e.x < 0 || e.y < 0 || e.x > R.w * TS || e.y > R.h * TS;
   if (out(P)) { P.x = P.lastSafe.x; P.y = P.lastSafe.y; P.vx = P.vy = 0; }
@@ -78,6 +82,7 @@ function updateProjectiles(dt) {
       continue;
     }
     if (p.owner === 'player') {
+      for (const pr of R.props || []) if (!pr.dead && dist(p.x, p.y, pr.x, pr.y - 4) < pr.r + p.r) { hitProp(pr); if (pr.hp > 99) p.life = 0; }
       for (const e of G.enemies) {
         if (e.dead || e.spawnT > 0 || p.hit.has(e)) continue;
         if (dist(p.x, p.y, e.x, e.y - 5) > e.r + p.r + 2) continue;
@@ -113,7 +118,8 @@ function updateHazards(dt) {
       if (h.owner === 'enemy') {
         if (h.kind === 'circle') {
           if (h.spike) { burst(h.x, h.y, 6, '#ece4d0', 50, { grav: 40 }); sfx.spike(); }
-          else enemyBlast(h.x, h.y, h.r, h.dmg, h.color, h.hurtsEnemies);
+          else enemyBlast(h.x, h.y, h.r, h.dmg, h.color, h.hurtsEnemies, h.enemyDmg);
+          for (const pr of G.room.props || []) if (!pr.dead && pr.hp < 99 && dist(h.x, h.y, pr.x, pr.y) < h.r) hitProp(pr);
           if (h.spike && dist(h.x, h.y, P.x, P.y) < h.r + 3) hurtPlayer(h.dmg, h.x, h.y);
         }
       } else {
@@ -152,11 +158,11 @@ function updatePickups(dt) {
       if (p.kind === 'ash') { G.run.ash += p.v * P.s.ashMul; sfx.ash(); }
       else if (p.kind === 'mat') {
         addMats(G.save.inv, { [p.id]: p.n }); G.run.mats[p.id] = (G.run.mats[p.id] || 0) + p.n;
-        text(P.x, P.y - 22, `+${p.n} ${RESOURCES[p.id].name}`, RESOURCES[p.id].color); sfx.ash();
+        matFeed(p.id, p.n); sfx.ash();
       } else if (p.kind === 'item') {
         const ok = addItem(G.save.inv, p.item, P.s.bag);
         if (ok) G.run.items.push(p.item);
-        text(P.x, P.y - 28, ok ? p.item.name : 'инвентарь полон', RARITY[p.item.rarity].color, true);
+        lootToast(p.item, ok);
         ring(P.x, P.y - 6, 3, 22, 0.4, RARITY[p.item.rarity].color, 2); sfx.pick();
       }
     }
@@ -212,10 +218,11 @@ export function renderGame(ctx) {
   // pickups
   for (const p of G.pickups) drawPickup(g, p);
   // y-sorted actors
-  const actors = [...G.enemies.filter((e) => !e.dead), P];
+  const actors = [...G.enemies.filter((e) => !e.dead), ...(R.props || []).filter((p) => !p.dead), P];
   actors.sort((a, b) => a.y - b.y);
   for (const a of actors) {
     if (a === P) { if (P.state !== 'fall') shadow(g, P.x, P.y, 4); drawPlayer(g, P); }
+    else if (a.hpMax !== undefined) drawProp(g, a);
     else if (a.isBoss) drawBoss(g, a);
     else drawEnemy(g, a);
   }
@@ -293,7 +300,9 @@ function drawLight(g, ix, iy) {
   const [fr, fg, fb] = F.theme.fog;
   const L = lg, W = light.width, H = light.height;
   L.globalCompositeOperation = 'source-over'; L.globalAlpha = 1;
-  L.fillStyle = `rgba(${fr},${fg},${fb},0.64)`; L.fillRect(0, 0, W, H);
+  L.clearRect(0, 0, W, H); // the fog must not accumulate frame over frame
+  // full vision: only a light tint of the floor's fog remains; the hero's halo just warms the centre
+  L.fillStyle = `rgba(${fr},${fg},${fb},0.2)`; L.fillRect(0, 0, W, H);
   L.globalCompositeOperation = 'destination-out';
   const q = 4; // the light canvas is 1/4 of the buffer
   const hole = (x, y, r, a = 1) => {
@@ -309,6 +318,7 @@ function drawLight(g, ix, iy) {
   for (const p of G.projs) { if (n++ > 40) break; hole(p.x, p.y, 24, 0.6); }
   for (const h of G.hazards) if (!h.done && h.owner === 'enemy') hole(h.x, h.y, h.r * 1.6, 0.5);
   for (const e of G.enemies) if (e.isBoss && !e.dead) hole(e.x, e.y - 10, 80, 0.6);
+  for (const p of R.props || []) if (p.light && !p.dead) hole(p.x, p.y - 8, 90, 0.9);
   for (const p of G.pickups) if (p.kind === 'item') hole(p.x, p.y - 6, 40, 0.8);
   L.globalAlpha = 1;
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true;
@@ -318,6 +328,7 @@ function drawLight(g, ix, iy) {
   // additive glow for fire / magic (world transform)
   g.globalCompositeOperation = 'lighter';
   for (const t of R.torches) { g.globalAlpha = 0.5; g.fillStyle = F.theme.accent; pcircle(g, t.x, t.y, 3 + Math.sin(G.real * 12 + t.x)); }
+  for (const p of R.props || []) if (p.light && !p.dead) { g.globalAlpha = 0.22; g.fillStyle = '#ff8f3a'; pcircle(g, p.x, p.y - 8, 10 + Math.sin(G.real * 9 + p.x), 7); }
   g.globalAlpha = 0.35;
   for (const p of G.parts) if (p.glow) { g.fillStyle = p.color; g.fillRect(rp(p.x - 1), rp(p.y - 1), 2, 2); }
   g.globalAlpha = 0.25;
@@ -330,6 +341,26 @@ function drawLight(g, ix, iy) {
     g.fillStyle = '#4a3d33'; g.fillRect(t.x - 1, t.y + 1, 2, 3);
     g.fillStyle = F.theme.accent; g.fillRect(t.x - 1, t.y - 2 - fl, 2, 3 + fl);
     g.fillStyle = '#ffd36b'; g.fillRect(t.x - 0.5, t.y - 1, 1, 1.5);
+  }
+}
+
+// dropped loot gets a large readable plate: icon, name, rarity (pips, not colour alone)
+function drawNameplates(ctx, hs) {
+  const P = G.player;
+  for (const p of G.pickups) {
+    if (p.kind !== 'item' || dist(p.x, p.y, P.x, P.y) > 120) continue;
+    const it = p.item, R = RARITY[it.rarity], s = worldToScreen(p.x, p.y - 46);
+    ctx.font = `400 ${Math.round(22 * hs)}px "Forum", Georgia, serif`;
+    const nameW = ctx.measureText(it.name).width;
+    const w = nameW + 70 * hs, h = 52 * hs, x = s.x - w / 2, y = s.y - h;
+    ctx.globalAlpha = 0.94; ctx.fillStyle = '#0b0812'; ctx.fillRect(x, y, w, h); ctx.globalAlpha = 1;
+    ctx.strokeStyle = R.color; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    const ico = itemIcon(it); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(ico, x + 8 * hs, y + 6 * hs, 40 * hs, 40 * hs);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = R.color;
+    ctx.fillText(it.name, x + 56 * hs, y + 26 * hs);
+    ctx.font = `400 ${Math.round(15 * hs)}px "PT Sans", sans-serif`; ctx.fillStyle = '#b8aa90';
+    ctx.fillText(`${'◆'.repeat(it.rarity + 1)} ${R.name}`, x + 56 * hs, y + 45 * hs);
   }
 }
 
@@ -346,7 +377,7 @@ function drawPickup(g, p) {
     g.fillStyle = '#ffffff'; g.fillRect(rp(p.x - 0.5), rp(p.y - 2 + bob), 0.5, 0.5);
   } else {
     // dropped item: rarity-coloured light beam + its icon
-    const col = RARITY[p.item.rarity].color, ico = SPR.icon[BASES[p.item.base].icon];
+    const col = RARITY[p.item.rarity].color, ico = { c: itemIcon(p.item), w: 10, h: 10 };
     g.globalAlpha = 0.25 + 0.15 * Math.sin(G.real * 4); g.fillStyle = col;
     g.fillRect(rp(p.x - 1.5), rp(p.y - 26), 3, 24); g.fillRect(rp(p.x - 0.5), rp(p.y - 40), 1, 38);
     g.globalAlpha = 1;
@@ -357,18 +388,22 @@ function drawPickup(g, p) {
 
 function drawScreenLayer(ctx) {
   const v = G.view;
-  // floating combat numbers (crisp text at screen res)
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // floating combat numbers: large, outlined, crisp at screen resolution
+  const hs = clamp(Math.min(v.cw, v.ch) / 620, 1, 1.7);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   for (const t of G.texts) {
     const k = t.t / t.life;
-    const s = worldToScreen(t.x, t.y - ease.outCubic(k) * 12);
-    const pop = t.big ? 1 + 0.6 * (1 - ease.outBack(Math.min(1, k * 4))) : 1;
-    const size = Math.round((t.big ? 18 : 13) * pop * Math.min(1.4, v.scale / 4 + 0.4));
-    ctx.font = `${size}px "Tiny5", ui-monospace, monospace`;
+    const s = worldToScreen(t.x, t.y - ease.outCubic(k) * 14);
+    const pop = 1 + 0.45 * (1 - ease.outBack(Math.min(1, k * 5)));
+    const isNum = /^[0-9]+$/.test(t.txt);
+    const size = Math.round((t.big ? 34 : isNum ? 24 : 22) * pop * hs);
+    ctx.font = `700 ${size}px "PT Sans", "Segoe UI", sans-serif`;
     ctx.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-    ctx.fillStyle = '#08060d'; ctx.fillText(t.txt, s.x + 2, s.y + 2);
+    ctx.lineWidth = Math.max(3, size * 0.2); ctx.strokeStyle = 'rgba(8,6,13,0.92)';
+    ctx.strokeText(t.txt, s.x, s.y);
     ctx.fillStyle = t.color; ctx.fillText(t.txt, s.x, s.y);
   }
   ctx.globalAlpha = 1;
+  drawNameplates(ctx, hs);
   drawHUD(ctx, worldToScreen);
 }

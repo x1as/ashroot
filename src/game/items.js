@@ -11,7 +11,7 @@ export function newInventory() {
   const sword = makeItem('w_sword', 1, 0, { name: 'Ксифос с костра', affixes: [] });
   const hood = makeItem('h_light', 1, 0, { name: 'Пилос странника', affixes: [] });
   const coat = makeItem('c_light', 1, 0, { name: 'Опалённый хитон', affixes: [] });
-  return { items: [sword, hood, coat], mats: { bone: 6 }, equip: { weapon: sword.uid, helm: hood.uid, chest: coat.uid } };
+  return { items: [sword, hood, coat], mats: { bone: 6 }, equip: { weapon: sword.uid, helm: hood.uid, chest: coat.uid }, codex: { w_sword: 0, h_light: 0, c_light: 0 } };
 }
 
 export function makeItem(baseId, ilvl, rarity, o = {}) {
@@ -29,10 +29,16 @@ export function makeItem(baseId, ilvl, rarity, o = {}) {
 }
 
 // loot roll: floor-scaled rarity; `min` guarantees a floor (bosses)
-export function rollLoot(ilvl, min = 0, boost = false) {
+// rarity weights per depth — also shown to the player in the Летопись tab
+export function rarityWeights(ilvl, min = 0, boost = false) {
   const w = [Math.max(10, 62 - ilvl * 8), 28 + ilvl, 8 + ilvl * 3, 2 + ilvl * 1.5];
   if (boost) { w[0] *= 0.6; w[2] *= 1.4; w[3] *= 1.4; }
   for (let i = 0; i < min; i++) w[i] = 0;
+  return w;
+}
+export function rarityChances(ilvl, min = 0, boost = false) { const w = rarityWeights(ilvl, min, boost), t = w.reduce((a, b) => a + b, 0); return w.map((x) => x / t); }
+export function rollLoot(ilvl, min = 0, boost = false) {
+  const w = rarityWeights(ilvl, min, boost);
   let r = Math.random() * w.reduce((a, b) => a + b, 0), rarity = 0;
   for (let i = 0; i < 4; i++) { r -= w[i]; if (r <= 0) { rarity = i; break; } }
   const keys = Object.keys(BASES).filter((k) => k !== 'x_relic' || rarity >= 1);
@@ -54,7 +60,12 @@ export function addItem(inv, it, bag) {
     if (!junk) return false;
     salvage(inv, junk, 1);
   }
+  it.isNew = true;
   inv.items.push(it);
+  // codex: remember the best rarity ever found per item type (and relic)
+  inv.codex ||= {};
+  const ck = it.base === 'x_relic' ? 'relic_' + it.relic : it.base;
+  inv.codex[ck] = Math.max(inv.codex[ck] ?? -1, it.rarity);
   return true;
 }
 export function addMats(inv, mats) { for (const k in mats) inv.mats[k] = (inv.mats[k] || 0) + mats[k]; }
@@ -87,7 +98,7 @@ export function infuse(save, it, what) {
   return 'ok';
 }
 export function salvage(inv, it, mul = 1) {
-  if (isEquipped(inv, it)) return null;
+  if (isEquipped(inv, it) || it.locked) return null;
   const y = salvageYield(it);
   for (const k in y) y[k] = Math.max(1, Math.round(y[k] * mul));
   addMats(inv, y);

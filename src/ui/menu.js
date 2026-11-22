@@ -255,10 +255,7 @@ export function renderMenu(ctx) {
       g.globalAlpha = lit ? 0.85 : 0.65;
       g.fillRect(Math.round(x + sway), Math.round(y), lr() < 0.3 ? 2 : 1, 1);
     }
-    const [tx, ty] = BR[br][2];
     g.globalAlpha = 1;
-    g.font = '8px "Tiny5", monospace'; g.textAlign = 'center'; g.fillStyle = col;
-    g.fillText(BRANCHES[br].name.toUpperCase(), tx, ty + (ty < 60 ? -10 : 16));
   }
   g.globalAlpha = 1;
   // the hero at the roots, in its current gear
@@ -289,6 +286,15 @@ export function renderMenu(ctx) {
   ctx.globalAlpha = ease.outCubic(M.intro);
   ctx.drawImage(buf, 0, 0, W * s, H * s);
   ctx.globalAlpha = 1;
+  // branch names in crisp screen-resolution type (never inside the pixel buffer)
+  const dpr = G.view.dpr;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  ctx.font = `400 ${Math.round(30 * dpr)}px "Forum", Georgia, serif`;
+  for (const br of BR_ORDER) {
+    const [tx, ty] = BR[br][2], X = (tx + ox) * s, Y = (ty + (ty < 60 ? -14 : 20) + oy) * s;
+    ctx.lineWidth = 6 * dpr; ctx.strokeStyle = 'rgba(7,5,12,0.9)'; ctx.strokeText(BRANCHES[br].name, X, Y);
+    ctx.fillStyle = BRANCHES[br].color; ctx.fillText(BRANCHES[br].name, X, Y);
+  }
 }
 
 // inspection hook for tests: screen position of a node
