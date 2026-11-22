@@ -6,7 +6,7 @@
 // Skills: build-game-inventory (atomic equip/swap, locked items, keyboard + touch alternatives),
 // game-ui-ux (>=18px text, rarity never by colour alone), pixel-art-sprites (integer-scaled icons).
 import { G } from '../game/state.js';
-import { SLOTS, SLOT_BY_ID, BASES, RARITY, WEIGHT, SLOT_MUL, AFFIXES, RELICS, ROOTS, ELEMENTS, ELEMENT_WEAPON, RESOURCES, RES_ORDER, FLAVOR, itemPower, itemScore, infuseCost, salvageYield } from '../data/items.js';
+import { SLOTS, SLOT_BY_ID, BASES, RARITY, WEIGHT, SLOT_MUL, AFFIXES, RELICS, ROOTS, ELEMENTS, ELEMENT_WEAPON, RESOURCES, RES_ORDER, FLAVOR, itemPower, itemScore, infuseCost, salvageYield, TITAN_PROPS, LEGEND } from '../data/items.js';
 import { ASPECTS } from '../data/boons.js';
 import { WEAPONS, ROLL, rawDps } from '../data/weapons.js';
 import { SPR, heroFrames, weaponSprite } from '../art/bank.js';
@@ -16,7 +16,6 @@ import { sfx } from '../engine/audio.js';
 import { writeSave } from '../game/save.js';
 import { computeStats } from '../game/stats.js';
 import { gearLook } from '../game/player.js';
-import { POWER_INFO } from '../game/power.js';
 import { equipItem, unequip, isEquipped, upgrade, infuse, salvage, scaledUpgradeCost, canPay, costText, rarityChances } from '../game/items.js';
 
 const $ = (id) => document.getElementById(id);
@@ -82,7 +81,7 @@ function renderGear(main) {
       <div class="pcol left">${LEFT.map((id) => slotHTML(inv, id)).join('')}</div>
       <div class="stage">
         <canvas id="gear-hero" width="216" height="270"></canvas>
-        <p class="wname">${W.name}: ${POWER_INFO[s.wk].name}</p>
+        <p class="wname">${W.name}: ${W.power.name}</p>
       </div>
       <div class="pcol right">${RIGHT.map((id) => slotHTML(inv, id)).join('')}</div>
       <dl class="statbar">
@@ -197,7 +196,9 @@ export function cardHTML(it, o = {}) {
   const W = base.slot === 'weapon' ? WEAPONS[base.kind] : null;
   const aff = it.affixes.map((a) => `<li>${AFFIXES[a.id].name(Math.round(a.v * (1 + 0.04 * it.up)))}</li>`).join('');
   let extra = '';
-  if (W) extra += `<p class="tech"><b>${W.skill.name}</b> — умение. <b>${POWER_INFO[base.kind].name}</b> — усиленный удар: ${POWER_INFO[base.kind].desc}</p>`;
+  if (W) extra += `<p class="tech"><b>${W.power.name}</b> (держи атаку): ${W.power.desc}</p><p class="mu">${W.tagline}${W.shield ? '. Щит блокирует удары и снаряды спереди' : ''}${W.bleedOnHit ? '. Каждый удар — рана яда' : ''}${W.execute ? `. Казнит врагов ниже ${Math.round(W.execute * 100)}% здоровья` : ''}</p>`;
+  if (it.tp && TITAN_PROPS[it.tp.k]) extra += `<p class="titan"><b>Титаническое: ${TITAN_PROPS[it.tp.k].name}.</b> ${TITAN_PROPS[it.tp.k].desc(it)}</p>`;
+  if (it.legend && LEGEND[it.base]) extra += `<p class="legend"><b>Божественная сила.</b> ${LEGEND[it.base]}</p>`;
   if (base.kind === 'relic') extra += `<p class="tech"><b>${RELICS[it.relic].name}.</b> ${RELICS[it.relic].desc}</p>`;
   if (it.infuse) {
     if (it.infuse.startsWith('root:')) { const r = ROOTS[it.infuse.slice(5)]; extra += `<p class="inf-line" style="--e:#ffb347"><b>${r.name}.</b> ${r.desc}</p>`; }

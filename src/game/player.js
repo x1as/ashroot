@@ -1,4 +1,5 @@
-// The hero. State machine: move | attack | charge | dodge | skill | flask | hurt | fall | dead.
+// The hero. State machine: move | hold | power | attack | charge | dodge | flask | hurt | stun | fall | dead.
+// No skill button: the weapon's identity lives in its combo and its charged technique (hold attack).
 // Souls-like commitment: windups cannot be cancelled; recovery can be cancelled into a dodge.
 import { G } from './state.js';
 import { WEAPONS } from '../data/weapons.js';
@@ -14,7 +15,18 @@ import { collide, moveCollide, tileAt, T, TS, spikeState, solidT } from './world
 import { hitProp } from './props.js';
 import { unleash } from './power.js';
 import { weaponSprite } from '../art/bank.js';
-import { hitEnemy, hurtPlayer, lv, reso, nova, dotScale, floorScale, bolt, chillE } from './combat.js';
+import { hitEnemy, hurtPlayer, lv, reso, nova, dotScale, floorScale, bolt, chillE, aspectLv, later } from './combat.js';
+import { ASPECTS } from '../data/boons.js';
+import { weaponTint } from '../art/bank.js';
+
+const METAL = ['#e8e2d2', '#f0d9a0', '#c9d2e8', '#ffd36b'];
+const AURA_KEYS = ['blood', 'fire', 'frost', 'storm', 'shadow'];
+// dominant god-aspect on the weapon (boons + gear + infusion): it colours swings and drips off the blade
+function auraOf(P) {
+  let best = null, bl = 0;
+  for (const k of AURA_KEYS) { const l = aspectLv(k) + (P.s.gearAspects[k] || 0) + (P.s.element === k ? 2 : 0); if (l > bl) { bl = l; best = k; } }
+  return best ? { k: best, l: bl, col: ASPECTS[best].color } : null;
+}
 
 // look of the hero from the equipped armour weights + weapon infusion
 export function gearLook(inv) {
@@ -35,9 +47,9 @@ export function createPlayer(stats, look, x, y) {
     state: 'move', st: 0, face: -Math.PI / 2, faceX: 1, flipS: 1,
     combo: 0, comboWin: 0, struck: false, atk: null, phase: 'wind',
     dodge: { dx: 0, dy: 1 }, dodgeAge: 0, iframe: 0, inv: 0, perfectDone: false,
-    flasks: stats.flasks, skillCd: 0, charge: 0, flash: 0, nextCrit: false,
+    flasks: stats.flasks, charge: 0, slowT: 0, stunT: 0, pbleedT: 0, pburnT: 0, dotT: 0, rageT: 0, invisT: 0, domeT: 0, twinN: 0, shotN: 0, tipX: x, tipY: y, blockT: 0, flash: 0, nextCrit: false,
     animT: 0, sq: 1, lastSafe: { x, y }, afterimg: [], cloth: [], frostShield: 0, frostCd: 0,
-    arcaneUp: !!stats.roots.bark, shots: 0, dead: false, hyperNow: false, tempestT: 0, sapT: 0, hits: 0, thunderHits: 0,
+    arcaneUp: !!stats.roots.bark, shots: 0, dead: false, hyperNow: false, tempestT: 0, sapT: 0, hits: 0, dagN: 0, thunderHits: 0,
     setState(s) { this.state = s; this.st = 0; },
     die() { this.dead = true; this.setState('dead'); G.onPlayerDeath?.(); },
   };
@@ -48,7 +60,8 @@ export function createPlayer(stats, look, x, y) {
 
 const atkRate = (P) => {
   let r = P.s.atkSpeed;
-  if (lv('b_frenzy')) r *= 1 + 0.04 * lv('b_frenzy') * Math.floor((1 - P.hp / P.s.maxHp) * 10);
+  if (P.rageT > 0) r *= 1.4;
+  if (P.s.leg.c_medium && P.hp < P.s.maxHp * 0.5) r *= 1.25;
   if (P.s.roots.rage && P.hp < P.s.maxHp * 0.4) r *= 1.25;
   return r;
 };
@@ -76,10 +89,13 @@ export function updatePlayer(P, dt) {
   P.rallyGlow = Math.max(0, P.rallyGlow - dt);
   P.frostCd = Math.max(0, P.frostCd - dt);
   P.sapT = Math.max(0, P.sapT - dt);
-  P.skillCd = Math.max(0, P.skillCd - dt);
+  P.rageT = Math.max(0, P.rageT - dt); P.invisT = Math.max(0, P.invisT - dt); P.slowT = Math.max(0, P.slowT - dt); P.domeT = Math.max(0, P.domeT - dt);
   P.comboWin = Math.max(0, P.comboWin - dt);
   P.hyperNow = false;
   if (P.dead) return;
+  tickPlayerStatus(P, dt);
+  P.aura = auraOf(P); P.auraCol = P.aura ? P.aura.col : P.accent[0];
+  if (P.aura) auraFx(P, dt);
   // stamina & rally
   if (P.staDelay > 0) P.staDelay -= dt; else P.sta = Math.min(s.maxSta, P.sta + s.staRegen * dt * (P.state === 'move' ? 1 : 0.4));
   if (P.rallyT > 0) P.rallyT -= dt; else P.rally = Math.max(0, P.rally - 30 * dt);
@@ -99,13 +115,12 @@ export function updatePlayer(P, dt) {
 
   const mx = input.move.x, my = input.move.y;
   const moving = Math.hypot(mx, my) > 0.1;
-  let speed = s.speed;
+  let speed = s.speed * (P.slowT > 0 ? 0.55 : 1);
   switch (P.state) {
     case 'move': {
       const k = moving ? 22 : 16;
       P.vx = damp(P.vx, mx * speed, k, dt); P.vy = damp(P.vy, my * speed, k, dt);
       if (input.pressed('dodge')) tryDodge(P, mx, my);
-      else if (input.pressed('skill')) trySkill(P);
       else if (input.pressed('flask')) tryFlask(P);
       else if (input.pressed('attack')) { P.setState('hold'); }
       break;
@@ -119,8 +134,10 @@ export function updatePlayer(P, dt) {
     }
     case 'power': {
       P.vx = damp(P.vx, mx * speed * 0.4, 14, dt); P.vy = damp(P.vy, my * speed * 0.4, 14, dt);
-      const spend = Math.min(P.sta, 75 * dt);
-      P.sta -= spend; P.power += spend; P.staDelay = 0.7;
+      // stamina pours into the weapon at chargeRate/s (tree, affixes, boons, divine gauntlets speed it up)
+      const spend = s.staFree ? Math.min(s.maxSta - P.power, s.chargeRate * dt) : Math.min(P.sta, s.chargeRate * dt);
+      if (!s.staFree) P.sta -= spend;
+      P.power += spend; P.staDelay = 0.7;
       const pr = P.power / s.maxSta, tier = Math.floor(pr * 4 + 1e-6);
       if (tier > P.tier) { P.tier = tier; ring(P.x, P.y - 6, 4, 16 + tier * 6, 0.3, tier >= 4 ? '#ffffff' : P.accent[0], 2); sfx.ui(); if (tier >= 4) flash(P.accent[0], 0.12); }
       if (Math.random() < dt * (20 + 60 * pr)) { const aa = rand(TAU), rr = 10 + 18 * pr; part({ x: P.x + Math.cos(aa) * rr, y: P.y - 6 + Math.sin(aa) * rr * 0.6, vx: -Math.cos(aa) * 30, vy: -Math.sin(aa) * 20, life: 0.35, color: pr > 0.95 ? '#ffffff' : P.accent[0], size: 1.5, drag: 2, glow: true }); }
@@ -128,8 +145,8 @@ export function updatePlayer(P, dt) {
       if (!input.held('attack')) {
         const p = P.power / s.maxSta;
         if (P.power < 6) { P.setState('move'); startAttack(P, true); break; }
-        unleash(P, p);
-        P.atk = { kind: 'power', wind: 0, act: 0.08, rec: 0.2 + 0.35 * p, arc: 360 };
+        const o = unleash(P, p) || {};
+        P.atk = { kind: 'power', wind: 0, act: 0.08, rec: o.rec ?? 0.2 + 0.35 * p, arc: 360, move: o.move, spinT: o.spin || 0 };
         P.setState('attack'); P.phase = 'act'; P.power = 0; P.sq = 0.6;
       }
       break;
@@ -145,7 +162,12 @@ export function updatePlayer(P, dt) {
       break;
     }
     case 'dodge': updateDodge(P, dt); break;
-    case 'skill': updateSkill(P, dt); break;
+    case 'stun': {
+      P.vx = damp(P.vx, 0, 12, dt); P.vy = damp(P.vy, 0, 12, dt);
+      if (Math.random() < dt * 12) part({ x: P.x + rand(-5, 5), y: P.y - 18, vx: 0, vy: -10, life: 0.3, color: '#ffd36b', size: 1, drag: 1 });
+      if (P.st >= P.stunT) P.setState('move');
+      break;
+    }
     case 'flask': {
       P.vx = damp(P.vx, mx * speed * 0.35, 12, dt); P.vy = damp(P.vy, my * speed * 0.35, 12, dt);
       if (Math.random() < dt * 30) part({ x: P.x + rand(-5, 5), y: P.y - rand(0, 12), vx: 0, vy: -20, life: 0.5, color: '#93e2ff', size: 1, drag: 1 });
@@ -176,7 +198,7 @@ export function updatePlayer(P, dt) {
   if (P.state === 'attack' && P.atk?.hyper && P.phase !== 'rec') P.hyperNow = true;
   moveCollide(G.room, P, P.vx * dt, P.vy * dt);
   // bodies: player can't walk through enemies, but rolls through them
-  if (P.state !== 'dodge' && !(P.state === 'skill' && P.wk === 'dagger')) for (const e of G.enemies) {
+  if (P.state !== 'dodge') for (const e of G.enemies) {
     if (e.dead || e.spawnT > 0) continue;
     const d = dist(P.x, P.y, e.x, e.y), m = P.r + e.r;
     if (d < m && d > 0) { const push = (m - d) * 0.6; moveCollide(G.room, P, ((P.x - e.x) / d) * push, ((P.y - e.y) / d) * push); }
@@ -184,7 +206,7 @@ export function updatePlayer(P, dt) {
   collide(G.room, P);
   // terrain
   const tile = tileAt(G.room, P.x, P.y);
-  if (tile === T.CHASM && P.state !== 'dodge' && !(P.state === 'skill' && P.wk !== 'staff')) { P.setState('fall'); sfx.fall(); text(P.x, P.y - 18, 'падение', '#8189a0'); return; }
+  if (tile === T.CHASM && P.state !== 'dodge') { P.setState('fall'); sfx.fall(); text(P.x, P.y - 18, 'падение', '#8189a0'); return; }
   if (tile === T.FLOOR) {
     const near = [[6, 0], [-6, 0], [0, 6], [0, -6]].every(([ox, oy]) => tileAt(G.room, P.x + ox, P.y + oy) !== T.CHASM);
     if (near) { P.lastSafe.x = P.x; P.lastSafe.y = P.y; }
@@ -197,6 +219,30 @@ export function updatePlayer(P, dt) {
   updateCloth(P, dt);
   for (const a of P.afterimg) a.t += dt;
   P.afterimg = P.afterimg.filter((a) => a.t < 0.25);
+}
+
+// statuses enemies put on the hero: bleed / burn tick (never kill: they leave 1 HP), slow, stun
+function tickPlayerStatus(P, dt) {
+  if (P.pbleedT <= 0 && P.pburnT <= 0) return;
+  P.pbleedT = Math.max(0, P.pbleedT - dt); P.pburnT = Math.max(0, P.pburnT - dt);
+  P.dotT += dt;
+  if (Math.random() < dt * 10) part({ x: P.x + rand(-3, 3), y: P.y - rand(4, 12), vx: 0, vy: P.pburnT > 0 ? -25 : 20, life: 0.4, color: P.pburnT > 0 ? '#ff8f3a' : '#e0404f', size: 1, drag: 1, grav: P.pburnT > 0 ? 0 : 60, glow: P.pburnT > 0 });
+  if (P.dotT < 0.5) return;
+  P.dotT -= 0.5;
+  const d = Math.max(1, Math.round(((P.pbleedT > 0 ? 2 : 0) + (P.pburnT > 0 ? 3 : 0)) * floorScale()));
+  if (G.godmode) return;
+  P.hp = Math.max(1, P.hp - d); P.rally = Math.min(P.s.maxHp, P.rally + d * 0.6); P.rallyT = P.s.rallyTime;
+  text(P.x + rand(-4, 4), P.y - 22, d, P.pburnT > 0 ? '#ff8f3a' : '#e0404f');
+}
+function auraFx(P, dt) {
+  const A = P.aura, rate = Math.min(1, A.l / 5) * 22 + 4;
+  if (Math.random() > dt * rate) return;
+  const x = P.tipX + rand(-2, 2), y = P.tipY + rand(-2, 2);
+  if (A.k === 'fire') part({ x, y, vx: rand(-8, 8), vy: -rand(20, 45), life: 0.45, color: Math.random() < 0.5 ? '#ff8f3a' : '#ffd36b', size: 1, drag: 1, glow: true });
+  else if (A.k === 'frost') part({ x, y, vx: rand(-6, 6), vy: rand(4, 14), life: 0.6, color: Math.random() < 0.5 ? '#93e2ff' : '#ffffff', size: 0.5, drag: 2, glow: true });
+  else if (A.k === 'storm') part({ x: x + rand(-3, 3), y: y + rand(-3, 3), vx: rand(-40, 40), vy: rand(-40, 40), life: 0.12, color: Math.random() < 0.5 ? '#ffd36b' : '#ffffff', size: 0.5, drag: 6, glow: true });
+  else if (A.k === 'blood') part({ x, y, vx: 0, vy: 6, life: 0.6, color: Math.random() < 0.6 ? '#7bd66b' : '#3e8a35', size: 1, drag: 0.5, grav: 90 });
+  else part({ x, y, vx: rand(-5, 5), vy: -rand(6, 16), life: 0.7, color: Math.random() < 0.5 ? '#b88cff' : '#4a2f7a', size: 1, drag: 1 });
 }
 
 function useSta(P, n) {
@@ -232,6 +278,7 @@ function updateDodge(P, dt) {
     P.setState('move');
     if (reso('frost', 2)) { ring(P.x, P.y, 2, 40, 0.35, '#93e2ff'); for (const e of G.enemies) if (!e.dead && dist(P.x, P.y, e.x, e.y) < 40) chillE(e, 3); }
     if (reso('shadow', 1)) P.shadowCrit = true;
+    if (s.leg.h_medium) { P.invisT = 1; burst(P.x, P.y - 6, 10, '#4a2f7a', 40); text(P.x, P.y - 22, 'шлем Аида', '#b88cff'); }
     P.sq = 0.75;
   }
   if (input.pressed('attack') && k > 0.6) { P.setState('move'); input.buf.attack = 0.15; }
@@ -266,7 +313,7 @@ function updateAttack(P, dt) {
   const a = P.atk, rate = atkRate(P);
   const wind = a.wind / rate, act = a.act / rate, rec = a.rec / rate;
   const mx = input.move.x, my = input.move.y;
-  const mm = { sword: 0.55, dagger: 0.75, greatsword: 0.35, staff: 0.6, bow: 0.6 }[P.wk] * P.s.speed;
+  const mm = (a.move ?? (P.wk === 'dagger' && P.s.leg.w_dagger ? 1 : P.C.move ?? 0.55)) * P.s.speed * (P.slowT > 0 ? 0.55 : 1);
   P.vx = damp(P.vx, mx * mm, 14, dt); P.vy = damp(P.vy, my * mm, 14, dt);
   if (P.phase === 'wind') {
     // slight aim correction during windup (readable, not twitchy)
@@ -289,52 +336,113 @@ function updateAttack(P, dt) {
 function strike(P) {
   const a = P.atk, s = P.s;
   if (a.kind === 'bolt') { fireBolt(P); return; }
-  const half = (a.arc * Math.PI) / 360;
-  const r = a.range;
+  const wk = P.wk, style = P.C.style;
+  const r = (a.range + (wk === 'spear' && s.leg.w_spear ? 10 : 0)) * s.reach;
+  const arcW = (lv('c_wide') && wk === 'sword' ? 0.35 : 0) + (a.arc < 360 ? (s.reach - 1) * 0.5 : 0);
+  const half = (a.arc * Math.PI) / 360 + arcW;
   const heavy = !!a.hyper;
-  const arcW = lv('c_wide') && P.wk === 'sword' ? 0.35 : 0;
-  // two-layer crescent: coloured edge + white-hot core, then a fading echo
-  const metal = ['#e8e2d2', '#f0d9a0', '#c9d2e8', '#ffd36b'][P.wr];
-  if (P.wk === 'dagger') {
-    // machairai: thin, fast, glinting cuts; the finisher crosses both blades into an X
-    smear(P.x, P.y - 5, P.face - half, P.face + half, r * 0.78, r + 2, 0.13, metal);
-    smear(P.x, P.y - 5, P.face - half * 0.8, P.face + half * 0.8, r * 0.88, r, 0.1, P.accent[0]);
-    if (a.finisher) { smear(P.x, P.y - 5, P.face + 0.7 - 0.8, P.face + 0.7 + 0.8, r * 0.6, r + 6, 0.22, '#ffffff'); smear(P.x, P.y - 5, P.face - 0.7 - 0.8, P.face - 0.7 + 0.8, r * 0.6, r + 6, 0.22, P.accent[0]); }
-  } else if (P.wk === 'greatsword') {
-    // club: a fat heavy arc, then the head hits the ground — dust ring and a crack at the tip
-    smear(P.x, P.y - 5, P.face - half * 1.05, P.face + half * 1.05, r * 0.25, r + 4, 0.3, '#8a7c68');
-    smear(P.x, P.y - 5, P.face - half * 0.9, P.face + half * 0.9, r * 0.45, r, 0.2, metal);
-    const tx = P.x + Math.cos(P.face) * r * 0.85, ty = P.y + Math.sin(P.face) * r * 0.85;
-    ring(tx, ty, 2, 16 + (a.finisher ? 14 : 0), 0.35, '#b8aa90', 2); burst(tx, ty, a.finisher ? 26 : 14, '#8a7c68', 90, { grav: 90, size: 2 });
-  } else {
-    // xiphos: wide two-layer crescent; the finisher is a full sweeping arc with a bright core
-    smear(P.x, P.y - 5, P.face - (half + arcW) * 1.08, P.face + (half + arcW) * 1.08, Math.max(6, r * 0.45), r + 3, heavy ? 0.26 : 0.2, P.accent[0]);
-    smear(P.x, P.y - 5, P.face - (half + arcW) * 0.95, P.face + (half + arcW) * 0.95, Math.max(8, r * 0.7), r, heavy ? 0.16 : 0.12, metal);
-  }
-  if (a.spin) ring(P.x, P.y - 5, 4, r, 0.25, P.accent[0], 2);
-  for (let i = 0; i < (heavy ? 10 : 5); i++) { const aa = P.face + rand(-half, half); part({ x: P.x + Math.cos(aa) * r * 0.8, y: P.y - 5 + Math.sin(aa) * r * 0.8, vx: Math.cos(aa) * 40, vy: Math.sin(aa) * 40, life: 0.25, color: i % 2 ? P.accent[0] : '#fff6e0', size: 0.5, drag: 6 }); }
-  sfx.swing(heavy);
-  let any = false;
-  for (const e of G.enemies) {
-    if (e.dead || e.spawnT > 0) continue;
-    const d = dist(P.x, P.y - 4, e.x, e.y - 4);
-    if (d > r + e.r + (arcW ? 4 : 0)) continue;
-    if (a.arc < 360 && Math.abs(angDiff(P.face, angTo(P.x, P.y - 4, e.x, e.y - 4))) > half + arcW + 0.2) continue;
-    any = true;
+  const metal = METAL[P.wr], col = P.auraCol;
+  swingFx(P, style, a, r, half, metal, col, heavy);
+  sfx.swing(heavy || style === 'axe');
+  const o = { type: P.C.dmgType, knock: heavy ? 90 : 35, heavy, shieldBreak: P.C.guardBreak && heavy, poiseMul: a.finisher ? 1.5 : 1, melee: true };
+  if (P.C.execute) o.execute = P.C.execute + (lv('c_execute') ? 0.15 : 0) + (s.leg.w_pelekys ? 0.1 : 0);
+  if (a.bash) { o.stun = 0.9; o.knock = 140; o.shieldBreak = true; }
+  if (wk === 'cleaver' && lv('c_titan')) o.stun = 0.5;
+  if (wk === 'spear' && s.leg.w_spear) o.shieldBreak = true;
+  if (wk === 'labrys' && a.spin && lv('c_labrys')) o.venom = 3;
+  const victims = targetsIn(P, a, r, half, style);
+  for (const e of victims) {
     slashMark(e.x, e.y - 6, P.face + Math.PI / 2 + rand(-0.4, 0.4), heavy ? 9 : 6);
-    hitEnemy(e, a.dmg, { type: P.C.dmgType, knock: heavy ? 90 : 35, heavy, shieldBreak: P.C.guardBreak && heavy, poiseMul: a.finisher ? 1.5 : 1 });
+    hitEnemy(e, a.dmg, o);
+    if (wk === 'spear' && lv('c_phalanx')) later(0.09, () => { if (!e.dead) { slashMark(e.x, e.y - 5, P.face + Math.PI / 2, 5); hitEnemy(e, a.dmg * 0.6, { type: 'pierce', knock: 15, noProc: true }); } });
+    if (wk === 'labrys' && a.spin && lv('c_labrys') && !e.isBoss) { const ang = angTo(e.x, e.y, P.x, P.y); e.kx += Math.cos(ang) * 160; e.ky += Math.sin(ang) * 160; }
   }
   for (const pr of G.room.props || []) {
     if (pr.dead || dist(P.x, P.y - 4, pr.x, pr.y - 4) > r + pr.r) continue;
-    if (a.arc < 360 && Math.abs(angDiff(P.face, angTo(P.x, P.y - 4, pr.x, pr.y - 4))) > half + arcW + 0.2) continue;
+    if (a.arc < 360 && Math.abs(angDiff(P.face, angTo(P.x, P.y - 4, pr.x, pr.y - 4))) > half + 0.2) continue;
     hitProp(pr);
   }
-  if (any && heavy) shake(0.2);
+  if (victims.length && heavy) shake(style === 'cleave' ? 0.35 : 0.2);
   kick(Math.cos(P.face), Math.sin(P.face), heavy ? 2.5 : 1);
+  // Nyx's shadow double repeats every third swing
+  if (lv('h_twin') && ++P.twinN % 3 === 0) later(0.13, () => {
+    if (P.dead) return;
+    smear(P.x, P.y - 5, P.face - half, P.face + half, r * 0.5, r + 2, 0.22, '#b88cff');
+    for (const e of targetsIn(P, a, r, half, style)) hitEnemy(e, a.dmg * (0.4 + 0.3 * lv('h_twin')), { type: 'shadow', knock: 10, noProc: true });
+  });
   if (a.finisher) {
-    if (lv('c_quake')) G.projs.push({ owner: 'player', kind: 'wave', x: P.x, y: P.y - 3, vx: Math.cos(P.face) * 170, vy: Math.sin(P.face) * 170, r: 8, dmg: 25 * s.dmgMul, type: 'slash', life: 0.6, pierce: 99, hit: new Set(), color: P.accent[0], noProc: true, knock: 60 });
+    const wave = (dmg, w = 170, c = col) => G.projs.push({ owner: 'player', kind: 'wave', x: P.x, y: P.y - 3, vx: Math.cos(P.face) * w, vy: Math.sin(P.face) * w, r: 8, dmg: dmg * s.dmgMul, type: 'slash', life: 0.6, pierce: 99, hit: new Set(), color: c, noProc: true, knock: 60 });
+    if (lv('c_quake') && wk === 'greatsword') wave(25);
+    if (lv('c_wide') && wk === 'sword') wave(14, 200);
+    if (s.leg.w_cleaver && wk === 'cleaver') { wave(40, 160, '#ffd36b'); ring(P.x, P.y, 4, 60, 0.4, '#ffd36b', 2); }
     if (s.bladeDance) G.projs.push({ owner: 'player', kind: 'blade', x: P.x, y: P.y - 5, vx: Math.cos(P.face) * 220, vy: Math.sin(P.face) * 220, r: 4, dmg: 15 * s.dmgMul, type: 'shadow', life: 0.5, pierce: 3, hit: new Set(), color: '#b88cff' });
   }
+}
+
+// who a swing touches: arcs test angle, thrusts test a narrow line along the facing
+function targetsIn(P, a, r, half, style) {
+  const out = [], cx = Math.cos(P.face), cy = Math.sin(P.face);
+  for (const e of G.enemies) {
+    if (e.dead || e.spawnT > 0) continue;
+    const dx = e.x - P.x, dy = e.y - P.y;
+    if (style === 'thrust') {
+      const along = dx * cx + dy * cy, across = Math.abs(dx * cy - dy * cx);
+      if (along < -2 || along > r + e.r || across > e.r + 5 + (a.finisher ? 3 : 0)) continue;
+    } else {
+      if (Math.hypot(dx, dy) > r + e.r) continue;
+      if (a.arc < 360 && Math.abs(angDiff(P.face, Math.atan2(dy, dx))) > half + 0.2) continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
+// every weapon type has its own swing silhouette
+function swingFx(P, style, a, r, half, metal, col, heavy) {
+  const x = P.x, y = P.y - 5, f = P.face;
+  if (style === 'twin') {
+    smear(x, y, f - half, f + half, r * 0.78, r + 2, 0.13, metal);
+    smear(x, y, f - half * 0.8, f + half * 0.8, r * 0.88, r, 0.1, col);
+    if (a.finisher) { smear(x, y, f + 0.7 - 0.8, f + 0.7 + 0.8, r * 0.6, r + 6, 0.22, '#ffffff'); smear(x, y, f - 0.7 - 0.8, f - 0.7 + 0.8, r * 0.6, r + 6, 0.22, col); }
+  } else if (style === 'smash') {
+    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.25, r + 4, 0.3, '#8a7c68');
+    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.45, r, 0.2, metal);
+    const tx = P.x + Math.cos(f) * r * 0.85, ty = P.y + Math.sin(f) * r * 0.85;
+    ring(tx, ty, 2, 16 + (a.finisher ? 14 : 0), 0.35, '#b8aa90', 2); burst(tx, ty, a.finisher ? 26 : 14, '#8a7c68', 90, { grav: 90, size: 2 });
+  } else if (style === 'thrust') {
+    // dory: a long narrow lance of light along the facing, a flash at the point
+    smear(x, y, f - 0.07, f + 0.07, 6, r + 4, 0.16, col);
+    smear(x, y, f - 0.035, f + 0.035, 10, r + 6, 0.12, '#ffffff');
+    const tx = P.x + Math.cos(f) * (r + 4), ty = y + Math.sin(f) * (r + 4);
+    ring(tx, ty, 1, a.finisher ? 12 : 7, 0.2, '#ffffff', 1);
+    for (let i = 0; i < 4; i++) part({ x: tx, y: ty, vx: Math.cos(f + rand(-0.5, 0.5)) * 70, vy: Math.sin(f + rand(-0.5, 0.5)) * 70, life: 0.18, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 });
+  } else if (style === 'axe') {
+    // labrys: two blades = two arcs, outer edge and an inner echo; the finisher is a whirl
+    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.55, r + 3, 0.24, col);
+    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.72, r, 0.16, metal);
+    smear(x, y, f - half * 0.7 + Math.PI, f + half * 0.7 + Math.PI, r * 0.5, r * 0.75, 0.14, metal);
+    if (a.spin) { ring(x, y, 6, r + 4, 0.3, col, 2); burst(P.x, P.y, 16, '#8c1c33', 80, { grav: 60 }); }
+  } else if (style === 'chop') {
+    // pelekys: an overhead chop slammed into the floor, a crack runs ahead
+    smear(x, y, f - half, f + half, r * 0.35, r + 3, 0.28, '#3b2a22');
+    smear(x, y, f - half * 0.8, f + half * 0.8, r * 0.55, r, 0.18, metal);
+    const tx = P.x + Math.cos(f) * r * 0.9, ty = P.y + Math.sin(f) * r * 0.9;
+    for (let i = 1; i <= (a.finisher ? 5 : 3); i++) burst(tx + Math.cos(f) * i * 6, ty + Math.sin(f) * i * 6, 3, '#5c4a3a', 40, { grav: 80, size: 1.5 });
+    ring(tx, ty, 2, a.finisher ? 22 : 14, 0.3, '#8a7c68', 2);
+  } else if (style === 'cleave') {
+    // titan's cleaver: an enormous dark slab of an arc, heavy dust and a white edge
+    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.2, r + 6, 0.36, '#2a2530');
+    smear(x, y, f - half, f + half, r * 0.55, r + 3, 0.26, metal);
+    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.85, r + 1, 0.18, col);
+    burst(P.x + Math.cos(f) * r * 0.7, P.y + Math.sin(f) * r * 0.7, a.finisher ? 30 : 16, '#6b5f52', 120, { grav: 80, size: 2 });
+    if (a.finisher) { ring(P.x, P.y, 6, r + 10, 0.4, '#b8aa90', 3); shake(0.3); }
+  } else {
+    smear(x, y, f - half * 1.08, f + half * 1.08, Math.max(6, r * 0.45), r + 3, heavy ? 0.26 : 0.2, col);
+    smear(x, y, f - half * 0.95, f + half * 0.95, Math.max(8, r * 0.7), r, heavy ? 0.16 : 0.12, metal);
+    if (a.bash) { const tx = P.x + Math.cos(f) * 14, ty = y + Math.sin(f) * 14; ring(tx, ty, 2, 18, 0.25, '#f0d9a0', 2); burst(tx, ty, 10, '#f0d9a0', 80); }
+  }
+  if (a.spin && style !== 'axe') ring(x, y, 4, r, 0.25, col, 2);
+  for (let i = 0; i < (heavy ? 10 : 5); i++) { const aa = f + rand(-half, half); part({ x: P.x + Math.cos(aa) * r * 0.8, y: y + Math.sin(aa) * r * 0.8, vx: Math.cos(aa) * 40, vy: Math.sin(aa) * 40, life: 0.25, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 }); }
 }
 
 // white slash streak across the target: sells every hit
@@ -351,11 +459,19 @@ function fireBolt(P) {
   const big = lv('c_overheat') && P.shots % 5 === 0;
   const arch = s.archmage && P.shots % 4 === 0;
   const sp = b.speed * s.projSpeed;
-  G.projs.push({
-    owner: 'player', kind: 'bolt', x: P.x + Math.cos(P.face) * 8, y: P.y - 6 + Math.sin(P.face) * 8,
-    vx: Math.cos(P.face) * sp, vy: Math.sin(P.face) * sp, r: big ? 6 : b.r, dmg: b.dmg * (big ? 2.5 : 1), type: 'arcane',
-    life: b.life * s.projSpeed, pierce: arch ? 2 : 0, hit: new Set(), color: '#b88cff', homing: b.homing * (arch ? 3 : 1), big, split: lv('c_split') > 0,
-  });
+  // Hecate's staff (divine): every bolt is three
+  const fan = s.leg.w_staff ? [-0.28, 0, 0.28] : [0];
+  const twin = lv('h_twin') && ++P.twinN % 3 === 0;
+  for (const off of fan) {
+    const a = P.face + off;
+    const pr = {
+      owner: 'player', kind: 'bolt', x: P.x + Math.cos(a) * 8, y: P.y - 6 + Math.sin(a) * 8,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: big ? 6 : b.r, dmg: b.dmg * (big ? 2.5 : 1) * (off ? 0.6 : 1), type: 'arcane',
+      life: b.life * s.projSpeed, pierce: arch ? 2 : 0, hit: new Set(), color: P.aura ? P.auraCol : '#b88cff', homing: b.homing * (arch ? 3 : 1), big: big && !off, split: lv('c_split') > 0,
+    };
+    G.projs.push(pr);
+    if (twin && !off) later(0.12, () => G.projs.push({ ...pr, x: P.x, y: P.y - 6, hit: new Set(), color: '#b88cff', dmg: pr.dmg * (0.4 + 0.3 * lv('h_twin')), big: false }));
+  }
   sfx.magic(); kick(-Math.cos(P.face), -Math.sin(P.face), 1);
   burst(P.x + Math.cos(P.face) * 9, P.y - 6 + Math.sin(P.face) * 9, 4, '#b88cff', 50, { ang: P.face, spread: 0.6 });
 }
@@ -368,43 +484,27 @@ function fireArrow(P) {
   const sp = lerp(A.speed, A.chargedSpeed, t) * s.projSpeed;
   useSta(P, full ? A.chargedSta : A.sta);
   const pierce = (full ? A.chargedPierce : 0) + (lv('c_pierce') ? 1 : 0) + (full && s.hawkeye ? 99 : 0);
-  G.projs.push({
-    owner: 'player', kind: 'arrow', x: P.x + Math.cos(P.face) * 6, y: P.y - 6 + Math.sin(P.face) * 6,
-    vx: Math.cos(P.face) * sp, vy: Math.sin(P.face) * sp, r: 3, dmg, type: 'pierce', life: 0.9, pierce, hit: new Set(),
-    color: P.accent[0], full, shieldBreak: full, critBonus: full ? s.chargedCrit : 0, forceCrit: full && s.hawkeye,
-  });
+  P.shotN++;
+  const sun = s.leg.w_bow && P.shotN % 4 === 0; // Apollo's bow: every 4th arrow is a sunbeam
+  const fan = lv('c_quick') && P.shotN % 3 === 0 ? [-0.18, 0, 0.18] : [0];
+  const twin = lv('h_twin') && ++P.twinN % 3 === 0;
+  for (const off of fan) {
+    const a = P.face + off;
+    const pr = {
+      owner: 'player', kind: sun && !off ? 'sunbeam' : 'arrow', x: P.x + Math.cos(a) * 6, y: P.y - 6 + Math.sin(a) * 6,
+      vx: Math.cos(a) * sp * (sun ? 1.5 : 1), vy: Math.sin(a) * sp * (sun ? 1.5 : 1), r: sun ? 4 : 3, dmg: dmg * (sun ? 1.6 : 1), type: 'pierce', life: 0.9, pierce: sun ? 99 : pierce, hit: new Set(),
+      color: sun ? '#ffd36b' : P.auraCol, full, shieldBreak: full || sun, critBonus: full ? s.chargedCrit : 0, forceCrit: full && s.hawkeye,
+    };
+    G.projs.push(pr);
+    if (twin && !off) later(0.1, () => G.projs.push({ ...pr, x: P.x, y: P.y - 6, hit: new Set(), color: '#b88cff', dmg: pr.dmg * (0.4 + 0.3 * lv('h_twin')) }));
+  }
   sfx.bow(c); kick(-Math.cos(P.face), -Math.sin(P.face), full ? 3 : 1);
   if (full) shake(0.08);
   P.atk = { wind: 0, act: 0.06, rec: 0.22, kind: 'arrow' };
   P.setState('attack'); P.phase = 'act'; P.charge = 0;
 }
 
-// ---------------- skills ----------------
-function trySkill(P) {
-  if (P.skillCd > 0) { text(P.x, P.y - 20, Math.ceil(P.skillCd) + ' с', '#8189a0'); return; }
-  P.skillCd = P.C.skill.cd * P.s.skillCd;
-  const sk = P.C.skill.id;
-  P.setState('skill'); P.skillHit = new Set();
-  const a = P.face;
-  if (lv('f_flare')) nova(P.x, P.y, 44, (15 + 10 * lv('f_flare')) * dotScale(), 'fire', '#ff8f3a');
-  if (sk === 'spin') { P.iframe = 0.15; P.spinN = lv('c_spin2') ? 2 : 1; P.skillHit = new Set(); sfx.swing(true); }
-  if (sk === 'shadowstep') { P.iframe = 0.22; sfx.dodge(); P.skillDir = a; }
-  if (sk === 'slam') { P.iframe = 0.1; P.skillFrom = { x: P.x, y: P.y }; const L = 46; P.skillTo = safeTarget(P, P.x + Math.cos(a) * L, P.y + Math.sin(a) * L); sfx.swing(true); }
-  if (sk === 'blink') {
-    const ox = P.x, oy = P.y;
-    let dx = input.move.x, dy = input.move.y;
-    if (Math.hypot(dx, dy) < 0.2) { dx = Math.cos(a); dy = Math.sin(a); }
-    const l = Math.hypot(dx, dy);
-    const to = safeTarget(P, P.x + (dx / l) * 80, P.y + (dy / l) * 80);
-    burst(P.x, P.y - 6, 16, '#b88cff', 60);
-    P.x = to.x; P.y = to.y; P.iframe = 0.25;
-    burst(P.x, P.y - 6, 16, '#b88cff', 60);
-    G.hazards.push({ kind: 'circle', x: ox, y: oy, r: 44, t: 0, wind: 0.18, dmg: 30 * P.s.dmgMul, owner: 'player', color: '#b88cff', type: 'arcane' });
-    sfx.magic(); P.sq = 0.6;
-  }
-  if (sk === 'volley') { P.iframe = 0.18; P.skillDir = a; sfx.dodge(); }
-}
-function safeTarget(P, tx, ty) {
+export function safeTarget(P, tx, ty) {
   for (let i = 0; i < 12; i++) {
     const v = tileAt(G.room, tx, ty);
     if (!solidT(v) && v !== T.CHASM) return { x: tx, y: ty };
@@ -412,56 +512,6 @@ function safeTarget(P, tx, ty) {
   }
   return { x: P.x, y: P.y };
 }
-function updateSkill(P, dt) {
-  const s = P.s, sk = P.C.skill.id;
-  if (sk === 'spin') {
-    // ash whirlwind: 0.32 s per turn, everything around takes a heavy hit once per turn
-    const D = 0.32, turn = Math.floor(P.st / D);
-    P.vx = damp(P.vx, input.move.x * s.speed * 0.5, 10, dt); P.vy = damp(P.vy, input.move.y * s.speed * 0.5, 10, dt);
-    P.face += dt * TAU / D;
-    if (turn !== P.spinTurn) {
-      P.spinTurn = turn; P.skillHit = new Set();
-      if (turn < P.spinN) { ring(P.x, P.y - 4, 6, 42, 0.3, P.accent[0], 2); smear(P.x, P.y - 5, P.face, P.face + TAU, 26, 42, 0.32, P.accent[0]); sfx.swing(true); }
-    }
-    for (const e of G.enemies) if (!e.dead && e.spawnT <= 0 && !P.skillHit.has(e) && dist(P.x, P.y, e.x, e.y) < 42 + e.r) { P.skillHit.add(e); hitEnemy(e, 34, { type: 'slash', knock: 80, heavy: true, poiseMul: 1.6 }); }
-    if (P.st >= D * P.spinN) { P.spinTurn = -1; P.setState('move'); P.sq = 0.75; }
-  } else if (sk === 'shadowstep') {
-    const D = 0.16;
-    const v = 72 / D;
-    P.vx = Math.cos(P.skillDir) * v; P.vy = Math.sin(P.skillDir) * v;
-    P.afterimg.push({ x: P.x, y: P.y, t: 0, flip: P.faceX < 0, col: true });
-    for (const e of G.enemies) if (!e.dead && e.spawnT <= 0 && !P.skillHit.has(e) && dist(P.x, P.y, e.x, e.y) < e.r + 8) { P.skillHit.add(e); hitEnemy(e, 22, { type: 'slash', knock: 20, venom: 3 }); }
-    if (P.st >= D) { P.nextCrit = true; P.setState('move'); P.vx *= 0.2; P.vy *= 0.2; P.sq = 0.7; }
-  } else if (sk === 'slam') {
-    const D = 0.42, k = Math.min(1, P.st / D);
-    const e = ease.inOutSine(k);
-    P.x = lerp(P.skillFrom.x, P.skillTo.x, e); P.y = lerp(P.skillFrom.y, P.skillTo.y, e);
-    P.vx = 0; P.vy = 0; P.hyperNow = true; P.jumpZ = Math.sin(k * Math.PI) * 18;
-    if (k >= 1) {
-      P.jumpZ = 0;
-      const R = 52 * s.slamR;
-      ring(P.x, P.y, 3, R, 0.4, P.accent[0], 2); burst(P.x, P.y, 26, '#8a7c68', 120, { grav: 50 });
-      for (const en of G.enemies) if (!en.dead && en.spawnT <= 0 && dist(P.x, P.y, en.x, en.y) < R + en.r) hitEnemy(en, 50, { type: 'slash', knock: 120, heavy: true, shieldBreak: true, poiseMul: 3 });
-      shake(0.5); sfx.boom(); P.sq = 0.6;
-      P.setState('move');
-    }
-  } else if (sk === 'blink') {
-    if (P.st > 0.12) P.setState('move');
-  } else if (sk === 'volley') {
-    const D = 0.15;
-    if (P.st < D) { const v = 30 / D; P.vx = -Math.cos(P.skillDir) * v; P.vy = -Math.sin(P.skillDir) * v; }
-    else {
-      const n = 7 + s.volleyExtra, spread = 0.9;
-      for (let i = 0; i < n; i++) {
-        const a = P.skillDir - spread / 2 + (spread * i) / (n - 1);
-        G.projs.push({ owner: 'player', kind: 'arrow', x: P.x, y: P.y - 6, vx: Math.cos(a) * 330, vy: Math.sin(a) * 330, r: 3, dmg: 12, type: 'pierce', life: 0.7, pierce: 1 + (lv('c_pierce') ? 1 : 0), hit: new Set(), color: P.accent[0] });
-      }
-      sfx.bow(1); shake(0.1); P.vx = 0; P.vy = 0;
-      P.setState('move');
-    }
-  }
-}
-
 function tryFlask(P) {
   if (P.flasks <= 0) { text(P.x, P.y - 20, 'пусто', '#8189a0'); return; }
   P.flasks--; P.setState('flask');
@@ -510,6 +560,8 @@ export function drawPlayer(g, P) {
   const bob = P.state === 'move' && moving ? -Math.abs(Math.sin(P.animT * Math.hypot(P.vx, P.vy) / 9 * Math.PI / 2)) : 0;
   const z = P.jumpZ || 0;
   for (const a of P.afterimg) drawSprite(g, spr, a.x, a.y, { flip: a.flip, alpha: 0.35 * (1 - a.t / 0.25), white: true });
+  if (P.slowT > 0) { g.globalAlpha = 0.5; g.fillStyle = '#93e2ff'; pcircle(g, P.x, P.y, 7, 3); g.globalAlpha = 1; }
+  if (P.domeT > 0) { g.globalAlpha = 0.18 + 0.08 * Math.sin(G.real * 12); g.fillStyle = '#ffd36b'; pcircle(g, P.x, P.y - 6, 16, 14); g.globalAlpha = 0.8; g.strokeStyle = '#fff3d0'; g.lineWidth = 0.5; g.beginPath(); g.ellipse(rp(P.x), rp(P.y - 6), 16, 14, 0, 0, TAU); g.stroke(); g.globalAlpha = 1; }
   if (P.state === 'power') {
     // charge aura: grows with the stamina poured in; four tiers, white at full
     const pw = P.power / P.s.maxSta, R = 8 + 18 * pw, col = pw > 0.97 ? '#ffffff' : P.accent[0];
@@ -524,7 +576,9 @@ export function drawPlayer(g, P) {
   // weapon behind when facing up
   if (back) drawWeapon(g, P, z);
   const blink = P.inv > 0 && P.state !== 'dodge' && Math.floor(G.real * 20) % 2 === 0;
-  drawSprite(g, spr, P.x, P.y + bob - z, { sx, sy, white: P.flash > 0, alpha: blink ? 0.45 : 1 });
+  drawSprite(g, spr, P.x, P.y + bob - z, { sx, sy, white: P.flash > 0, alpha: P.invisT > 0 ? 0.3 : blink ? 0.45 : 1 });
+  if (P.state === 'stun') for (let i = 0; i < 3; i++) { const aa = G.real * 6 + (i * TAU) / 3; g.fillStyle = i ? '#ffd36b' : '#ffffff'; g.fillRect(rp(P.x + Math.cos(aa) * 5), rp(P.y - 19 + Math.sin(aa) * 1.5), 1, 1); }
+  if (P.rageT > 0 && Math.random() < 0.4) part({ x: P.x + rand(-5, 5), y: P.y - rand(0, 14), vx: 0, vy: -30, life: 0.3, color: '#ff3355', size: 1, drag: 1, glow: true });
   if (back) drawCloth(g, P);
   if (!back) drawWeapon(g, P, z);
   if (P.frostShield > 0) { g.globalAlpha = 0.5; g.fillStyle = '#93e2ff'; g.fillRect(rp(P.x - 7), rp(P.y - 17), 14, 0.5); g.globalAlpha = 1; }
@@ -544,6 +598,19 @@ function drawCloth(g, P) {
 }
 function weaponAngle(P, st) {
   const a = P.atk, half = (a.arc * Math.PI) / 360, rate = atkRate(P);
+  if (P.C.style === 'thrust') {
+    // dory: pull back, then drive the point straight out along the facing
+    if (P.phase === 'wind') { const k = ease.outCubic(Math.min(1, st / (a.wind / rate))); return [P.face, 2 - k * 6]; }
+    if (P.phase === 'act') { const k = ease.outQuart(Math.min(1, st / (a.act / rate))); return [P.face, -4 + k * 16]; }
+    const k = ease.inOutSine(Math.min(1, st / (a.rec / rate))); return [P.face, 12 - 9 * k];
+  }
+  if (P.C.style === 'chop' || P.C.style === 'cleave') {
+    // overhead: the blade rises high behind, then falls through the facing
+    const side = P.combo % 2 === 0 ? 1 : -1, up = half * 1.4;
+    if (P.phase === 'wind') { const k = ease.outCubic(Math.min(1, st / (a.wind / rate))); return [P.face - side * up * k, 3 - k * 3]; }
+    if (P.phase === 'act') { const k = Math.min(1, st / (a.act / rate)); return [P.face - side * up + side * up * 1.8 * k * k, 7]; }
+    const k = ease.inOutSine(Math.min(1, st / (a.rec / rate))); return [P.face + side * up * 0.8 * (1 - k), 7 - 3 * k];
+  }
   const side = P.combo % 2 === 0 ? 1 : -1;
   if (P.phase === 'wind') { const k = ease.outCubic(Math.min(1, st / (a.wind / rate))); return [P.face - side * half * 1.15 * k, 3 - k * 2]; }
   if (P.phase === 'act') { const k = ease.outQuart(Math.min(1, st / (a.act / rate))); return [P.face - side * half * 1.15 + side * half * 2.3 * k, 8]; }
@@ -568,12 +635,14 @@ function drawWeapon(g, P, z) {
   if (melee) {
     [ang, reach] = weaponAngle(P, P.st);
     if (P.atk.spin) ang = P.face + (P.phase === 'act' ? TAU * Math.min(1, P.st / P.atk.act) : 0);
-  } else if (P.state === 'skill' && P.C.skill.id === 'spin') { ang = P.face; reach = 8; }
+  } else if (P.state === 'attack' && P.atk?.kind === 'power' && P.atk.spinT && P.st < P.atk.spinT) { ang = P.face + G.real * 22; reach = 6; }
   else if (powering) {
     // weapon drawn back over the shoulder, trembling with the stored power
     ang = P.face + Math.PI * (P.faceX > 0 ? -0.75 : 0.75) + Math.sin(G.real * 40) * 0.05 * pw; reach = 4;
     if (key === 'bow' || key === 'staff') ang = P.face;
+    if (key === 'spear') { ang = P.face + Math.sin(G.real * 40) * 0.04 * pw; reach = -6 - pw * 4; }
   } else if (key === 'bow') reach = 5;
+  else if (key === 'spear') { ang = P.face + (P.faceX > 0 ? 0.25 : -0.25) + Math.sin(P.animT * 2) * 0.04; reach = 0; }
   else if (key === 'staff') { ang = P.face; reach = 3; }
   else { ang = P.face + (P.faceX > 0 ? 0.9 : -0.9) * 0.6 + Math.sin(P.animT * 2) * 0.05; reach = 3; }
 
@@ -591,11 +660,24 @@ function drawWeapon(g, P, z) {
   }
   if (melee && P.phase === 'act') for (const [dt, al] of [[0.05, 0.18], [0.03, 0.3], [0.015, 0.45]]) { const [a2, r2] = weaponAngle(P, Math.max(0, P.st - dt)); put(a2, r2, al).restore(); }
   const w = put(ang, reach, 1);
+  // tip of the blade (aura particles spawn there)
+  P.tipX = P.x + Math.cos(ang) * (reach + spr.w * 0.8); P.tipY = P.y - 6 - z + Math.sin(ang) * (reach + spr.w * 0.8) * 0.8;
+  if (P.aura && P.aura.l >= 2) { w.globalAlpha = Math.min(0.55, 0.15 + 0.08 * P.aura.l) * (0.75 + 0.25 * Math.sin(G.real * 7)); const t = weaponTint(key, P.wr, P.auraCol); w.drawImage(t, -3, -spr.h / 2 - 1, spr.w + 2, spr.h + 2); w.globalAlpha = 1; w.drawImage(spr.c, -2, -spr.h / 2, spr.w, spr.h); }
   if (key === 'bow' && powering) {
     const pull = pw * 5, ar = SPR.weapon['arrow_' + (P.s.element || 'none')];
     w.drawImage(ar.c, -pull - 2, -ar.h / 2, ar.w, ar.h);
     if (pw > 0.95 && Math.floor(G.real * 12) % 2 === 0) { w.fillStyle = '#ffffff'; w.fillRect(5, -1, 2, 2); }
   }
-  if (key === 'staff') { w.globalAlpha = 0.5 + 0.3 * Math.sin(G.real * 6); w.fillStyle = '#b88cff'; const o = 2 + pw * 3; w.fillRect(15 - o / 2, -o / 2, o, o); }
+  if (key === 'staff') { w.globalAlpha = 0.5 + 0.3 * Math.sin(G.real * 6); w.fillStyle = P.aura ? P.auraCol : '#b88cff'; const o = 2 + pw * 3; w.fillRect(15 - o / 2, -o / 2, o, o); }
   w.restore();
+  if (P.C.shield) {
+    // aspis on the off arm: raised to the front while not swinging (it blocks frontal hits and missiles)
+    const sh = weaponSprite('shield', P.wr), up = !melee && P.state !== 'dodge';
+    const d = up ? 6 : 3, side = up ? 0.55 : 1.4;
+    const sa = P.face - P.faceX * side;
+    const sx = P.x + Math.cos(sa) * d, sy = P.y - 6 - z + Math.sin(sa) * d * 0.8;
+    if (sh.glow) { g.globalAlpha = 0.3 + 0.2 * Math.sin(G.real * 5); g.drawImage(sh.glow, rp(sx - sh.w / 2 - 1), rp(sy - sh.h / 2 - 1), sh.w + 2, sh.h + 2); g.globalAlpha = 1; }
+    g.drawImage(sh.c, rp(sx - sh.w / 2), rp(sy - sh.h / 2), sh.w, sh.h);
+    if (P.blockT > G.real) { g.globalAlpha = 0.7; g.fillStyle = '#ffffff'; g.fillRect(rp(sx - 3), rp(sy - 3), 6, 6); g.globalAlpha = 1; }
+  }
 }

@@ -3,7 +3,7 @@ window.__bot = function (cls, maxSimSec = 900, god = true) {
   const G = __G, D = __dbg, inp = D.input;
   const log = { cls, errors: [], rooms: [], simT: 0 };
   document.getElementById('menu').hidden = true;
-  const base = { sword: 'w_sword', dagger: 'w_dagger', greatsword: 'w_great', staff: 'w_staff', bow: 'w_bow' }[cls];
+  const base = { sword: 'w_sword', dagger: 'w_dagger', greatsword: 'w_great', staff: 'w_staff', bow: 'w_bow', spear: 'w_spear', aspis: 'w_aspis', labrys: 'w_labrys', pelekys: 'w_pelekys', cleaver: 'w_cleaver' }[cls];
   const w = D.makeItem(base, 1, 0, { affixes: [] }); G.save.inv.items.push(w); D.equipItem(G.save.inv, w);
   D.startRun();
   G.godmode = god;
@@ -33,7 +33,6 @@ window.__bot = function (cls, maxSimSec = 900, god = true) {
         G.mouseWorld = { x: e.x, y: e.y - 4 };
         if (d < (ranged ? 180 : 40)) { const ph = i % 300; const hold = ph > 200 && ph < 290; inp.down.attack = hold || i % 14 < 2; if (!hold && i % 14 === 0) inp.buf.attack = 0.15; }
         if (e.state === 'wind' && d < 40 && Math.random() < 0.08) inp.buf.dodge = 0.15;
-        if (Math.random() < 0.01) inp.buf.skill = 0.15;
         if (P.hp < P.s.maxHp * 0.4 && Math.random() < 0.01) inp.buf.flask = 0.15;
       } else {
         const ex = G.room.exits.find((x) => x.open);

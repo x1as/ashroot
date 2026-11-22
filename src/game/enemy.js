@@ -38,7 +38,8 @@ const phaseT = (e, base) => Math.max(base === e.def.atk.wind ? MIN_TELEGRAPH : 0
 
 function takeToken(e) {
   if (e.def.ai === 'turret' || e.def.ai === 'bomber') return true;
-  if ((G.tokens || 0) >= ATTACK_TOKENS) return false;
+  // deeper halls let more enemies swing at once (2 on depth 1-2, 3 on 3-4, 4 on 5)
+  if ((G.tokens || 0) >= ATTACK_TOKENS + Math.floor(((G.run?.floor || 1) - 1) / 2)) return false;
   G.tokens = (G.tokens || 0) + 1; e.token = true; return true;
 }
 function freeToken(e) { if (e.token) { e.token = false; G.tokens = Math.max(0, G.tokens - 1); } }
@@ -62,6 +63,7 @@ export function updateEnemy(e, dt) {
   }
   tickStatus(e, dt);
   if (e.dead) return;
+  if (e.stoneT > 0) e.stoneT -= dt;
   if (e.freeze > 0) { e.vx = 0; e.vy = 0; moveBody(e, dt); return; }
   const slow = 1 - 0.08 * e.chill;
   const dP = dist(e.x, e.y, P.x, P.y);
@@ -74,13 +76,14 @@ export function updateEnemy(e, dt) {
   switch (e.state) {
     case 'chase': {
       const ai = e.def.ai;
-      const sees = los(R, e.x, e.y, P.x, P.y);
+      const hidden = P.invisT > 0; // helm of Hades / ring of Gyges: enemies lose the hero
+      const sees = !hidden && los(R, e.x, e.y, P.x, P.y);
       let want = 'toward';
       if (ai === 'ranged' || ai === 'caster') {
         if (dP < (e.def.keep * 0.7)) want = 'away'; else if (dP < e.def.keep * 1.3 && sees) want = 'strafe'; else want = 'toward';
         if (ai === 'caster' && dP < e.def.blink && e.blinkCd <= 0) { blink(e); break; }
       }
-      if (ai === 'turret') want = 'none';
+      if (ai === 'turret' || hidden) want = 'none';
       if (want !== 'none') {
         let dir;
         if (want === 'toward') dir = sees ? { x: Math.cos(toP), y: Math.sin(toP) } : flowDir(R, e.x, e.y) || { x: Math.cos(toP), y: Math.sin(toP) };
@@ -89,7 +92,7 @@ export function updateEnemy(e, dt) {
         mvx = dir.x * e.speed * slow; mvy = dir.y * e.speed * slow;
       }
       const inRange = dP < A.range * (ai === 'melee' ? 0.9 : 1) + P.r;
-      const canSee = ai === 'melee' || ai === 'bomber' || ai === 'turret' || sees;
+      const canSee = !hidden && (ai === 'melee' || ai === 'bomber' || ai === 'turret' || sees);
       if (inRange && canSee && e.cd <= 0 && P.state !== 'dead' && takeToken(e)) beginWind(e);
       break;
     }
@@ -111,7 +114,7 @@ export function updateEnemy(e, dt) {
       } else if (A.kind === 'lunge') {
         const v = A.dash * Math.max(0, 1 - e.st / A.act * 0.6);
         mvx = Math.cos(e.aim) * v; mvy = Math.sin(e.aim) * v;
-        if (!e.hitDone && dist(e.x, e.y, P.x, P.y) < e.r + P.r + 3) { e.hitDone = true; hurtPlayer(e.dmg, e.x, e.y); }
+        if (!e.hitDone && dist(e.x, e.y, P.x, P.y) < e.r + P.r + 3) { e.hitDone = true; hurtPlayer(e.dmg, e.x, e.y, { status: e.def.inflict }); }
         if (Math.random() < 0.6) G.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: 1, color: '#56603a', drag: 0, grav: 0, z: 0, vz: 0 });
         if (e.st >= A.act) toRec(e);
       } else if (e.st >= A.act) toRec(e);
@@ -168,16 +171,16 @@ function startAct(e) {
     case 'lunge': sfx.swing(false); break;
     case 'shoot': {
       const sp = A.speed;
-      G.projs.push({ owner: 'enemy', kind: 'bonearrow', x: e.x, y: e.y - 6, vx: Math.cos(e.aim) * sp, vy: Math.sin(e.aim) * sp, r: 2, dmg: e.dmg, life: 2.2, color: '#ece4d0' });
+      G.projs.push({ owner: 'enemy', kind: 'bonearrow', x: e.x, y: e.y - 6, vx: Math.cos(e.aim) * sp, vy: Math.sin(e.aim) * sp, r: 2, dmg: e.dmg, life: 2.2, color: '#ece4d0', status: e.def.inflict });
       sfx.enemyShot();
       break;
     }
     case 'cast': {
-      G.hazards.push({ kind: 'circle', x: P.x, y: P.y, r: A.r, t: 0, wind: A.act, dmg: e.dmg, owner: 'enemy', color: '#e0404f' });
+      G.hazards.push({ kind: 'circle', x: P.x, y: P.y, r: A.r, t: 0, wind: A.act, dmg: e.dmg, owner: 'enemy', color: '#e0404f', status: e.def.inflict });
       break;
     }
     case 'explode': {
-      enemyBlast(e.x, e.y, A.r, e.dmg, '#b4ec5f', true);
+      enemyBlast(e.x, e.y, A.r, e.dmg, '#b4ec5f', true, e.dmg, e.def.inflict);
       e.def = { ...e.def, deathBlast: 0 };
       e.affix = null;
       e.hp = 0; killEnemy(e, {});
@@ -186,7 +189,7 @@ function startAct(e) {
     case 'radial': {
       for (let i = 0; i < A.n; i++) {
         const a = (i / A.n) * TAU + e.anim;
-        G.projs.push({ owner: 'enemy', kind: 'orb', x: e.x, y: e.y - 6, vx: Math.cos(a) * A.speed, vy: Math.sin(a) * A.speed, r: 3, dmg: e.dmg, life: 3, color: '#e0404f' });
+        G.projs.push({ owner: 'enemy', kind: 'orb', x: e.x, y: e.y - 6, vx: Math.cos(a) * A.speed, vy: Math.sin(a) * A.speed, r: 3, dmg: e.dmg, life: 3, color: '#e0404f', status: e.def.inflict });
       }
       sfx.enemyShot();
       break;
@@ -200,7 +203,7 @@ function arcHit(e, A) {
   const P = G.player;
   const d = dist(e.x, e.y, P.x, P.y);
   const a = angTo(e.x, e.y, P.x, P.y);
-  if (d < A.range + P.r && Math.abs(angDiff(e.aim, a)) < (A.arc * Math.PI) / 360) hurtPlayer(e.dmg, e.x, e.y);
+  if (d < A.range + P.r && Math.abs(angDiff(e.aim, a)) < (A.arc * Math.PI) / 360) hurtPlayer(e.dmg, e.x, e.y, { status: e.def.inflict });
   const half = (A.arc * Math.PI) / 360;
   G.arcs.push({ x: e.x, y: e.y - 4, a0: e.aim - half, a1: e.aim + half, r0: A.range * 0.4, r1: A.range, t: 0, life: 0.18, color: '#e0404f' });
 }
@@ -284,7 +287,8 @@ export function drawEnemy(g, e) {
   }
   const white = e.flash > 0 || (e.state === 'wind' && e.st >= e.windT - COUNTER_WINDOW && Math.floor(G.real * 30) % 2 === 0);
   drawSprite(g, spr, e.x + ox, e.y + bob, { flip: e.faceX < 0, sx, sy, white });
-  if (e.freeze > 0) { g.globalAlpha = 0.55; drawSprite(g, spr, e.x + ox, e.y + bob, { flip: e.faceX < 0, sx, sy, img: tintFor(e.type, '#93e2ff') }); g.globalAlpha = 1; }
+  if (e.stoneT > 0) { g.globalAlpha = 0.75; drawSprite(g, spr, e.x + ox, e.y + bob, { flip: e.faceX < 0, sx, sy, img: tintFor(e.type, '#8d8473') }); g.globalAlpha = 1; }
+  else if (e.freeze > 0) { g.globalAlpha = 0.55; drawSprite(g, spr, e.x + ox, e.y + bob, { flip: e.faceX < 0, sx, sy, img: tintFor(e.type, '#93e2ff') }); g.globalAlpha = 1; }
   else if (e.chill > 0) { g.globalAlpha = 0.1 * e.chill; drawSprite(g, spr, e.x + ox, e.y + bob, { flip: e.faceX < 0, sx, sy, img: tintFor(e.type, '#93e2ff') }); g.globalAlpha = 1; }
   if (e.state === 'stagger') { for (let i = 0; i < 3; i++) { const a = G.real * 5 + (i * TAU) / 3; g.fillStyle = '#ffd36b'; g.fillRect(Math.round(e.x + Math.cos(a) * 6), Math.round(e.y - spr.h - 2 + Math.sin(a) * 2), 1, 1); } }
   // small hp bar only once damaged (keeps the screen clean)

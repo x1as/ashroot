@@ -19,8 +19,23 @@
   <aside id="panel" aria-live="polite"></aside>
   <footer class="dock">
     <button id="btn-gear" class="gearbtn"><img alt="" src=""><span>Снаряжение</span></button>
+    <button id="btn-settings" class="ghost">Настройки</button>
     <button id="btn-descend">Спуститься в корни</button>
   </footer>
+</section>
+
+<section id="settings" class="overlay" hidden>
+  <h2>Настройки</h2>
+  <form id="cheat-form" class="cheat">
+    <label for="cheat">Код для теста</label>
+    <div class="cheat-row"><input id="cheat" autocomplete="off" spellcheck="false" placeholder="например, OLYMPUS"><button type="submit">Применить</button></div>
+    <p id="cheat-out" aria-live="polite"></p>
+  </form>
+  <div class="danger-zone">
+    <p>Сброс удалит древо, пепел, предметы, ресурсы, статистику и достижения. Отменить нельзя.</p>
+    <button id="btn-wipe" class="ghost danger">Сбросить весь прогресс</button>
+  </div>
+  <div class="row"><button id="settings-close">Закрыть</button></div>
 </section>
 
 <section id="cards" class="overlay" hidden>
@@ -50,6 +65,7 @@
     <button id="btn-resume">Продолжить</button>
     <button id="btn-gear-pause" class="ghost">Снаряжение</button>
     <button id="btn-mute" class="ghost">Звук</button>
+    <button id="btn-settings-pause" class="ghost">Настройки</button>
     <button id="btn-abandon" class="ghost danger">Сдаться</button>
   </div>
 </section>
@@ -77,7 +93,6 @@
   <button id="btn-pause" aria-label="Пауза">II</button>
   <div class="pad">
     <button class="tb flask" id="btn-flask" data-act="flask" aria-label="Фляга">✚</button>
-    <button class="tb skill" id="btn-skill" data-act="skill" aria-label="Умение">✦</button>
     <button class="tb dodge" data-act="dodge" aria-label="Перекат">↯</button>
     <button class="tb attack" data-act="attack" aria-label="Атака">⚔</button>
   </div>

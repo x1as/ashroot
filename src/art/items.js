@@ -33,10 +33,15 @@ export const ICON16 = {
   relic_ember: ['......e.........', '.....eye........', '.....eyye.......', '....eyywye......', '....eyyyyE......', '.....EyyE.......', '......GG........', '.....GgG........', '....GgG.........', '...GgG..........', '..GgG...........', '.GgG............', 'GG..............'],
   relic_compass: ['.....rrrrr......', '....rhrrrrR.....', '...rhrRrrRrR....', '...rrRrrRrrR....', '...rRrrRrrRR....', '...rrRrRrrRR....', '....rRrrRRR.....', '.....RRRRR..r...', '............r...', '...........r....'],
   relic_coin: ['.....yyyyy......', '...yyYYYYYyy....', '..yYwwYYYYYYy...', '..yYwYYkYYYYy...', '.yYYYYkkkYYYYy..', '.yYYYkkYkkYYYy..', '.yYYYYkkkYYYYy..', '..yYYYYkYYYYy...', '..yYYYYYYYYYy...', '...yyYYYYYyy....', '.....yyyyy......'],
+  spear: ['.............wA.', '............wAMD', '...........wAMD.', '..........JAMD..', '.........nJJD...', '........nwN.....', '.......nwN......', '......nwN.......', '.....nwN........', '....nwN.........', '...nwN..........', '..nwN...........', '.nwN............', 'nwN.............', 'MD..............', 'D...............'],
+  aspis: ['.....MMMMMM.....', '...MMAAAAAAMM...', '..MAwAAAAAAAMD..', '.MAwAAAAJAAAAMD.', '.MAAAAAJAJAAAMD.', 'MAAAAAJAAAJAAAMD', 'MAAAAJAAAAAJAAMD', 'MAAAJAAAAAAAJAMD', 'MMAAAAAAAAAAAAMD', '.MMAAAAAAAAAAMD.', '.MMMAAAAAAAAMDD.', '..MMMMAAAAMMDD..', '...DMMMMMMMMD...', '.....DDDDDD.....'],
+  labrys: ['.DM....JJ....MD.', 'DMAM...JJ...MAMD', 'DMAAM..MM..MAAMD', 'DMAwAMMMMMMAwAMD', 'DMAAAMAAAAMAAAMD', 'DMAAM.MAAM.MAAMD', 'DMAM..MMMM..MAMD', '.DM...JnNJ...MD.', '.......nN.......', '.......nN.......', '.......nN.......', '......JnNJ......', '.......nN.......', '.......nN.......', '.......MD.......', '.......DD.......'],
+  pelekys: ['.........MMM....', '.......JMAAAM...', '.......JMAwAAM..', '......nNMAwAAAM.', '......nNMAAAAAMD', '......nNMAAAAAMD', '......nNMAAAAMD.', '......nNJMMMMD..', '......nN........', '......nN........', '......nN........', '.....JnNJ.......', '......nN........', '......nN........', '......MD........', '......DD........'],
+  cleaver: ['....MAAAAAAMD...', '....MAwAAAAMD...', '....MAwAAAAMD...', '....MAwAAAAMD...', '....MAAAAAAMD...', '....MAwAAAAMD...', '....MAAAAAAMD...', '....MAAAAAAMD...', '....MAAAAAAMD...', '....MMMMMMMMD...', '...JJJJJJJJJJJ..', '.......nN.......', '.......nN.......', '.......nN.......', '......MAMD......', '.......DD.......'],
 };
 
 export const ICON_OF = {
-  w_sword: 'sword', w_dagger: 'dagger', w_great: 'club', w_staff: 'staff', w_bow: 'bow',
+  w_sword: 'sword', w_dagger: 'dagger', w_great: 'club', w_staff: 'staff', w_bow: 'bow', w_spear: 'spear', w_aspis: 'aspis', w_labrys: 'labrys', w_pelekys: 'pelekys', w_cleaver: 'cleaver',
   h_light: 'pilos', h_medium: 'chalcid', h_heavy: 'corinth', c_light: 'chiton', c_medium: 'linothorax', c_heavy: 'cuirass',
   g_light: 'wraps', g_medium: 'bracer', g_heavy: 'gauntlet', b_light: 'sandal', b_medium: 'endromis', b_heavy: 'greave',
   a_amulet: 'gorgon', r_ring: 'ring', x_relic: 'relic_coin',

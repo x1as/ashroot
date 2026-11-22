@@ -32,7 +32,7 @@ export function startRun() {
   save.stats.runs++; writeSave(save);
   emit('runStart', { weapon: stats.wk });
   for (const id of stats.startWith) addBoon(id, true);
-  if (stats.startBoon) addBoon(rollOffer(1)[0].id, true);
+  for (let i = 0; i < (stats.startBoon | 0); i++) { const o = rollOffer(1)[0]; if (o) addBoon(o.id, true); }
   G.mode = 'game';
   enterRoom(0);
 }
@@ -110,7 +110,7 @@ export function enterRoom(idx) {
   P.arcaneUp = P.s.arcaneShield;
   for (const c of P.cloth) { c.x = c.px = P.x; c.y = c.py = P.y - 8; }
   G.cam.x = P.x; G.cam.y = P.y - 30;
-  r.roomHits = 0;
+  r.roomHits = 0; r.aegisUsed = false; r.heads = 0;
   R.state = { waves: [], wave: -1, t: 0, cleared: false, rewardShown: false, timer: 0 };
   if (plan.id === 'boss') {
     const b = createBoss(F.boss, R.w * TS / 2, 6 * TS);

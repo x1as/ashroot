@@ -105,22 +105,32 @@ export function drawHUD(ctx, w2s) {
   const pacts = Object.keys(r.boons).filter((id) => id.startsWith('p_')).length;
   if (pacts) { icon(ctx, 'pact', rx - 7 * is, ay, is); font(ctx, 13 * hs); ctx.fillStyle = '#ff3355'; ctx.fillText(`Пакты ${pacts}`, rx - 9 * is, ay + 6 * is); }
 
-  // ---- skill cooldown (desktop) ----
+  // ---- charged attack hint + statuses ----
   if (!input.touch) {
-    const R = 20 * hs, cx = cw - pad - R - (G.safe?.r || 0), cy = ch - pad - R - (G.safe?.b || 0);
-    ctx.fillStyle = 'rgba(8,6,13,0.8)'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
-    const k = P.skillCd / (P.C.skill.cd * P.s.skillCd);
-    ctx.strokeStyle = P.accent[0]; ctx.lineWidth = 3 * hs;
-    ctx.beginPath(); ctx.arc(cx, cy, R - 2 * hs, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - k)); ctx.stroke();
-    font(ctx, 11 * hs); ctx.textAlign = 'center'; ctx.fillStyle = k > 0 ? '#6b5f82' : '#ece4d0';
-    ctx.fillText(k > 0 ? Math.ceil(P.skillCd) : 'E', cx, cy + 4 * hs);
-    font(ctx, 10 * hs); ctx.fillStyle = '#6b5f82'; ctx.textAlign = 'right';
-    ctx.fillText(P.C.skill.name, cx - R - 8 * hs, cy + 4 * hs);
+    font(ctx, 11 * hs); ctx.textAlign = 'right'; ctx.fillStyle = '#6b5f82';
+    ctx.fillText('держи атаку: ' + P.C.power.name, cw - pad - (G.safe?.r || 0), ch - pad - (G.safe?.b || 0));
   } else {
-    const btn = document.getElementById('btn-skill');
-    if (btn) btn.style.setProperty('--cd', String(P.skillCd / (P.C.skill.cd * P.s.skillCd)));
     const fl = document.getElementById('btn-flask');
     if (fl) fl.dataset.n = P.flasks;
+  }
+  {
+    const st = [];
+    if (P.state === 'stun') st.push(['оглушён', '#ffd36b', P.stunT - P.st]);
+    if (P.slowT > 0) st.push(['замедлен', '#93e2ff', P.slowT]);
+    if (P.pbleedT > 0) st.push(['кровотечение', '#e0404f', P.pbleedT]);
+    if (P.pburnT > 0) st.push(['горишь', '#ff8f3a', P.pburnT]);
+    if (P.rageT > 0) st.push(['ярость Ареса', '#ff3355', P.rageT]);
+    if (P.invisT > 0) st.push(['невидим', '#b88cff', P.invisT]);
+    if (P.domeT > 0) st.push(['купол', '#ffd36b', P.domeT]);
+    font(ctx, 13 * hs); ctx.textAlign = 'center';
+    let sx = cw / 2 - (st.length - 1) * 55 * hs;
+    for (const [n, c, t] of st) {
+      ctx.fillStyle = 'rgba(8,6,13,0.8)'; ctx.fillRect(sx - 52 * hs, ch * 0.16, 104 * hs, 20 * hs);
+      ctx.fillStyle = c; ctx.fillRect(sx - 52 * hs, ch * 0.16 + 18 * hs, 104 * hs * Math.min(1, t / 3), 2 * hs);
+      ctx.fillText(`${n} ${Math.max(0, t).toFixed(1)}`, sx, ch * 0.16 + 14 * hs);
+      sx += 110 * hs;
+    }
+    ctx.textAlign = 'left';
   }
 
   // ---- diegetic stamina ring ----
@@ -155,7 +165,7 @@ export function drawHUD(ctx, w2s) {
   if (r.floor === 1 && r.roomIdx === 0 && G.room.state.t < 14) {
     font(ctx, 12 * hs); ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(236,228,208,0.75)';
     const lines = input.touch ? ['стик — движение, ⚔ атака (держи — усиленный удар), ↯ перекат', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО']
-      : ['WASD — движение, ЛКМ — атака (держи — усиленный удар), Space — перекат, E — умение, Q — нектар, I — сокровищница', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО'];
+      : ['WASD — движение, ЛКМ — атака (держи — усиленный удар), Space или ПКМ — перекат, Q — нектар, I — сокровищница', 'бей в белую вспышку замаха — КОНТР · перекат в последний миг — ИДЕАЛЬНО'];
     lines.forEach((l, i) => ctx.fillText(l, cw / 2, ch - (input.touch ? 150 : 52) * hs + i * 18 * hs));
   }
 

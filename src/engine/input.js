@@ -3,7 +3,7 @@
 const BUFFER = 0.15;
 const KEYMAP = {
   KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-  Space: 'dodge', ShiftLeft: 'dodge', ShiftRight: 'dodge', KeyJ: 'attack', KeyK: 'dodge', KeyE: 'skill', KeyL: 'skill',
+  Space: 'dodge', ShiftLeft: 'dodge', ShiftRight: 'dodge', KeyJ: 'attack', KeyK: 'dodge',
   KeyQ: 'flask', KeyR: 'flask', Escape: 'pause', KeyP: 'pause', Enter: 'confirm', KeyF: 'interact', KeyI: 'inv', Tab: 'inv',
   Digit1: 'c1', Digit2: 'c2', Digit3: 'c3', Digit4: 'c4',
 };
@@ -44,9 +44,9 @@ export function initInput(canvas) {
     if (input.touch) return;
     input.mouse.x = e.clientX; input.mouse.y = e.clientY; input.mouse.moved = 3;
     if (e.button === 0) press('attack');
-    if (e.button === 2) press('skill');
+    if (e.button === 2) press('dodge');
   });
-  addEventListener('mouseup', (e) => { if (e.button === 0) release('attack'); if (e.button === 2) release('skill'); });
+  addEventListener('mouseup', (e) => { if (e.button === 0) release('attack'); if (e.button === 2) release('dodge'); });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // ---- touch ----

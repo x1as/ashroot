@@ -40,6 +40,11 @@ export const BASES = {
   w_great: { slot: 'weapon', kind: 'greatsword', name: 'Палица', icon: 'club', legend: 'Палица Геракла' },
   w_staff: { slot: 'weapon', kind: 'staff', name: 'Посох', icon: 'orb', legend: 'Посох Гекаты' },
   w_bow: { slot: 'weapon', kind: 'bow', name: 'Лук', icon: 'bow', legend: 'Лук Аполлона' },
+  w_spear: { slot: 'weapon', kind: 'spear', name: 'Дори', icon: 'bow', legend: 'Копьё Ахилла' },
+  w_aspis: { slot: 'weapon', kind: 'aspis', name: 'Аспис и ксифос', icon: 'shieldi', legend: 'Щит Персея' },
+  w_labrys: { slot: 'weapon', kind: 'labrys', name: 'Лабрис', icon: 'hammer', legend: 'Лабрис Миноса' },
+  w_pelekys: { slot: 'weapon', kind: 'pelekys', name: 'Пелекус', icon: 'hammer', legend: 'Секира Ликурга' },
+  w_cleaver: { slot: 'weapon', kind: 'cleaver', name: 'Тесак Титана', icon: 'sword', legend: 'Тесак Кроноса' },
   h_light: { slot: 'helm', kind: 'light', name: 'Пилос', icon: 'helm', legend: 'Петас Гермеса' },
   h_medium: { slot: 'helm', kind: 'medium', name: 'Халкидский шлем', icon: 'helm', legend: 'Шлем Аида' },
   h_heavy: { slot: 'helm', kind: 'heavy', name: 'Коринфский шлем', icon: 'helm', legend: 'Шлем Ахилла' },
@@ -73,16 +78,17 @@ export const AFFIXES = {
   speed: { name: (v) => `+${v}% скорости бега`, r: [3, 7], apply: (s, v) => { s.speed *= 1 + v / 100; }, slots: 'def' },
   armor: { name: (v) => `+${v} брони`, r: [3, 7], apply: (s, v) => { s.armor += v; }, slots: 'def' },
   dodge: { name: (v) => `−${v}% цены переката`, r: [5, 11], apply: (s, v) => { s.dodgeCost *= 1 - v / 100; }, slots: 'def' },
-  cd: { name: (v) => `−${v}% перезарядки умения`, r: [6, 13], apply: (s, v) => { s.skillCd *= 1 - v / 100; }, slots: 'any' },
+  charge: { name: (v) => `+${v}% скорости заряда`, r: [8, 16], apply: (s, v) => { s.chargeRate *= 1 + v / 100; }, slots: 'any' },
+  power: { name: (v) => `+${v}% урона усиленной атаки`, r: [8, 18], apply: (s, v) => { s.powerMul *= 1 + v / 100; }, slots: 'off' },
   ash: { name: (v) => `+${v}% пепла`, r: [8, 18], apply: (s, v) => { s.ashMul += v / 100; }, slots: 'acc' },
   find: { name: (v) => `+${v}% находок`, r: [8, 18], apply: (s, v) => { s.findMul += v / 100; }, slots: 'acc' },
   flask: { name: (v) => `+${v}% лечения флягой`, r: [4, 9], apply: (s, v) => { s.flaskHeal += v / 100; }, slots: 'acc' },
   rally: { name: (v) => `+${v}% отмщения`, r: [8, 16], apply: (s, v) => { s.rallyEff *= 1 + v / 100; }, slots: 'any' },
 };
 export const AFFIX_POOL = {
-  weapon: ['dmg', 'crit', 'critd', 'atk', 'rally', 'cd', 'sta'],
+  weapon: ['dmg', 'crit', 'critd', 'atk', 'rally', 'charge', 'sta', 'power'],
   armor: ['hp', 'armor', 'sta', 'regen', 'speed', 'dodge', 'rally'],
-  acc: ['hp', 'sta', 'regen', 'dmg', 'crit', 'cd', 'ash', 'find', 'flask', 'rally', 'speed'],
+  acc: ['hp', 'sta', 'regen', 'dmg', 'crit', 'charge', 'ash', 'find', 'flask', 'rally', 'speed'],
 };
 
 // relics always carry one unique power
@@ -134,7 +140,9 @@ export const BOSS_ELEMENT = { warden: 'blood', singer: 'storm', smith: 'fire', w
 export const FLAVOR = {
   w_sword: 'Короткий меч гоплита. Им сражались у Фермопил.', w_dagger: 'Изогнутые клинки охотников Аркадии.',
   w_great: 'Палица из дикой оливы: Геракл срубил её у Немеи.', w_staff: 'Посох жриц Гекаты, богини перекрёстков и чар.',
-  w_bow: 'Лук, подаренный Аполлоном. Стрелы помнят яд Гидры.', h_light: 'Войлочная шапка путника и пастуха.',
+  w_bow: 'Лук, подаренный Аполлоном. Стрелы помнят яд Гидры.', w_spear: 'Ясеневое древко в рост человека. Им держали строй фаланги.',
+  w_aspis: 'Круглый бронзовый щит и короткий меч: так стоял гоплит.', w_labrys: 'Двойной топор Кносса, знак власти над лабиринтом.',
+  w_pelekys: 'Секира палачей и лесорубов. Рубит одинаково.', w_cleaver: 'Слишком большой, чтобы быть мечом. Слишком острый, чтобы быть куском железа.', h_light: 'Войлочная шапка путника и пастуха.',
   h_medium: 'Открытый шлем с нащёчниками, его любили в Халкиде.', h_heavy: 'Глухой шлем с гребнем. Лицо видно лишь в прорезь.',
   c_light: 'Простой хитон. Лёгкость дороже защиты.', c_medium: 'Склеенные слои льна: доспех Александра.',
   c_heavy: 'Бронзовая кираса, выкованная по мышцам героя.', g_light: 'Ремни кулачного бойца, как у Полидевка.',
@@ -171,3 +179,43 @@ export function salvageYield(it) {
   return y;
 }
 export const COST_NAME = (k) => (k === 'ash' ? 'пепла' : RESOURCES[k].name.toLowerCase());
+
+// ---------------- what makes rarity matter ----------------
+// TITANIC items roll one titan property; DIVINE items carry the unique power of their mythic owner.
+export const TITAN_PROPS = {
+  aspect: { name: 'Отголосок бога', desc: (it) => `+1 к аспекту ${['Гидра', 'Прометей', 'Борей', 'Зевс', 'Никта'][it.tp.n]}` },
+  ignite: { name: 'Тлеющая бронза', desc: () => '12% шанс поджечь при ударе' },
+  keen: { name: 'Острота титана', desc: () => '+6% крита и +25% урона крита' },
+  might: { name: 'Мощь титана', desc: () => '+20% урона усиленной атаки' },
+  leech: { name: 'Кровь Урана', desc: () => 'Удары лечат 1.5% нанесённого урона' },
+  breath: { name: 'Дыхание Атласа', desc: () => '+25 выносливости и +10% её восстановления' },
+};
+export const TITAN_KEYS = Object.keys(TITAN_PROPS);
+
+// one unique divine power per item type
+export const LEGEND = {
+  w_sword: 'Харпа Персея: удары по оглушённым и замёрзшим наносят ×2. Серп Персея выпускает на 2 волны больше.',
+  w_dagger: 'Махайры Аталанты: +20% скорости, удары не замедляют бег, каждый 5-й удар — крит.',
+  w_great: 'Палица Геракла: усиленная атака всегда оглушает на 2 с и бьёт на 30% сильнее.',
+  w_staff: 'Посох Гекаты: каждый снаряд делится на три.',
+  w_bow: 'Лук Аполлона: каждая 4-я стрела — солнечная, пробивает всех.',
+  w_spear: 'Копьё Ахилла: уколы пробивают всех на линии и бьют на 10 дальше.',
+  w_aspis: 'Щит Персея: щит отражает снаряды обратно во врагов.',
+  w_labrys: 'Лабрис Миноса: каждый удар накладывает 2 раны яда.',
+  w_pelekys: 'Секира Ликурга: убийства возвращают 25 выносливости, порог казни +10%.',
+  w_cleaver: 'Тесак Кроноса: каждый финишер рождает ударную волну, урон усиленной атаки +25%.',
+  h_light: 'Петас Гермеса: +15% скорости бега.',
+  h_medium: 'Шлем Аида: после переката 1 с невидимости — враги теряют цель.',
+  h_heavy: 'Шлем Ахилла: −15% урона, иммунитет к оглушению.',
+  c_light: 'Шкура Немейского льва: −30% урона от ударов вблизи.',
+  c_medium: 'Пояс Ипполиты: ниже 50% здоровья +25% скорости атаки.',
+  c_heavy: 'Доспех Гефеста: иммунитет к замедлению и горению, +15 брони.',
+  g_light: 'Обмотки Полидевка: каждый 4-й удар оглушает.',
+  g_medium: 'Наручи Персея: +40% урона усиленной атаки.',
+  g_heavy: 'Длани Атланта: заряд копится на 40% быстрее.',
+  b_light: 'Таларии Гермеса: окно идеального переката вдвое шире, перекат на 30% дешевле.',
+  b_medium: 'Сандалии Ясона: на выбор на один дар больше.',
+  b_heavy: 'Кнемиды Аякса: иммунитет к замедлению, −20% урона.',
+  a_amulet: 'Эгида Афины: первый удар в зале отражён, нападающий окаменевает на 2 с.',
+  r_ring: 'Перстень Гигеса: после убийства 1 с невидимости.',
+};

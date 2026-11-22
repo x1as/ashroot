@@ -16,6 +16,7 @@ import { TS, tileAt, solidT, drawSpikes, drawExits, exitHit, T } from './world.j
 import { updatePlayer, drawPlayer } from './player.js';
 import { updateEnemy, drawEnemy, drawTelegraph } from './enemy.js';
 import { updateBoss, drawBoss, drawBossTele } from './boss.js';
+import { weaponSprite } from '../art/bank.js';
 import { hitEnemy, hurtPlayer, updateDelayed, enemyBlast, killEnemy, lv, chillE } from './combat.js';
 import { updateRoom, takeExit } from './run.js';
 import { drawProp, hitProp, pushOut } from './props.js';
@@ -75,8 +76,18 @@ function updateProjectiles(dt) {
         p.vx = Math.cos(na) * sp; p.vy = Math.sin(na) * sp;
       }
     }
+    // Achilles' spear: flies out, then comes back to the hand, cutting again on the way
+    if (p.ret) {
+      p.t = (p.t || 0) + dt;
+      if (p.t > p.out) {
+        if (!p.back) { p.back = true; p.hit = new Set(); p.life = 1.5; }
+        const a = angTo(p.x, p.y, P.x, P.y - 6), sp = 520;
+        p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp;
+        if (dist(p.x, p.y, P.x, P.y - 6) < 10) { p.life = 0; continue; }
+      }
+    }
     p.x += p.vx * dt; p.y += p.vy * dt;
-    if (solidT(tileAt(R, p.x, p.y + 5))) {
+    if (!p.ret && solidT(tileAt(R, p.x, p.y + 5))) {
       p.life = 0; burst(p.x, p.y, 4, p.color, 40);
       if (p.big) nova(p);
       continue;
@@ -87,15 +98,15 @@ function updateProjectiles(dt) {
         if (e.dead || e.spawnT > 0 || p.hit.has(e)) continue;
         if (dist(p.x, p.y, e.x, e.y - 5) > e.r + p.r + 2) continue;
         p.hit.add(e);
-        hitEnemy(e, p.dmg, { type: p.type, knock: p.kind === 'arrow' ? (p.full ? 70 : 25) : 30, fx: p.x - p.vx * 0.05, fy: p.y - p.vy * 0.05, shieldBreak: p.shieldBreak, critBonus: p.critBonus, forceCrit: p.forceCrit, noProc: p.noProc });
+        hitEnemy(e, p.dmg, { type: p.type, knock: p.knock ?? (p.kind === 'arrow' ? (p.full ? 70 : 25) : 30), fx: p.x - p.vx * 0.05, fy: p.y - p.vy * 0.05, shieldBreak: p.shieldBreak, critBonus: p.critBonus, forceCrit: p.forceCrit, noProc: p.noProc, power: p.power, stun: p.stun });
         if (p.big) nova(p);
         if (p.split && !p.child) for (const s of [-0.6, 0.6]) { const a = Math.atan2(p.vy, p.vx) + s; G.projs.push({ ...p, child: true, hit: new Set(p.hit), vx: Math.cos(a) * 220, vy: Math.sin(a) * 220, dmg: p.dmg * 0.4, life: 0.35, r: 2, big: false, homing: 0, pierce: 0 }); }
         if (p.pierce > 0) p.pierce--; else { p.life = 0; break; }
       }
     } else {
       if (P.state !== 'dead' && dist(p.x, p.y, P.x, P.y - 5) < p.r + 4) {
-        const hit = hurtPlayer(p.dmg, p.x - p.vx * 0.1, p.y - p.vy * 0.1);
-        if (hit || P.inv > 0) p.life = 0;
+        const hit = hurtPlayer(p.dmg, p.x - p.vx * 0.1, p.y - p.vy * 0.1, { proj: p, status: p.status });
+        if (p.owner === 'enemy' && (hit || P.inv > 0)) p.life = 0;
       }
     }
     if (Math.random() < (p.owner === 'player' ? 0.5 : 0.15) && p.kind !== 'arrow' && p.kind !== 'bonearrow') G.parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.2, max: 0.2, size: 1, color: p.color, drag: 0, grav: 0, z: 0, vz: 0 });
@@ -119,13 +130,13 @@ function updateHazards(dt) {
       if (h.owner === 'enemy') {
         if (h.kind === 'circle') {
           if (h.spike) { burst(h.x, h.y, 6, '#ece4d0', 50, { grav: 40 }); sfx.spike(); }
-          else enemyBlast(h.x, h.y, h.r, h.dmg, h.color, h.hurtsEnemies, h.enemyDmg);
+          else enemyBlast(h.x, h.y, h.r, h.dmg, h.color, h.hurtsEnemies, h.enemyDmg, h.status);
           for (const pr of G.room.props || []) if (!pr.dead && pr.hp < 99 && dist(h.x, h.y, pr.x, pr.y) < h.r) hitProp(pr);
           if (h.spike && dist(h.x, h.y, P.x, P.y) < h.r + 3) hurtPlayer(h.dmg, h.x, h.y);
         }
       } else {
         ring(h.x, h.y, 2, h.r, 0.3, h.color, 2); burst(h.x, h.y, 14, h.color, h.r * 2);
-        for (const e of G.enemies) if (!e.dead && dist(h.x, h.y, e.x, e.y) < h.r + e.r) hitEnemy(e, h.dmg / (G.player.s.dmgMul || 1), { type: h.type, fx: h.x, fy: h.y, knock: 70, noProc: true });
+        for (const e of G.enemies) if (!e.dead && dist(h.x, h.y, e.x, e.y) < h.r + e.r) hitEnemy(e, h.dmg / (G.player.s.dmgMul || 1), { type: h.type, fx: h.x, fy: h.y, knock: 70, noProc: true, power: h.power, stun: h.stun });
       }
     }
     if (h.done) h.doneT += dt;
@@ -139,7 +150,7 @@ function updateZones(dt) {
       z.tick = 0.33;
       for (const e of G.enemies) if (!e.dead && dist(z.x, z.y, e.x, e.y) < z.r + e.r) hitEnemy(e, z.dps * 0.33, { dot: true, type: z.type });
     }
-    if (Math.random() < dt * 6) G.parts.push({ x: z.x + rand(-3, 3), y: z.y, vx: 0, vy: -20, life: 0.4, max: 0.4, size: 1, color: z.color, drag: 1, grav: 0, z: 0, vz: 0, glow: true });
+    if (Math.random() < dt * (6 + z.r * 0.5)) G.parts.push({ x: z.x + rand(-z.r * 0.7, z.r * 0.7), y: z.y + rand(-z.r * 0.4, z.r * 0.4), vx: 0, vy: -20, life: 0.4, max: 0.4, size: 1, color: z.color, drag: 1, grav: 0, z: 0, vz: 0, glow: true });
   }
   G.zones = G.zones.filter((z) => z.t < z.life);
 }
@@ -289,6 +300,13 @@ function drawProj(g, p) {
     g.globalAlpha = 0.5; g.fillStyle = p.color; g.fillRect(-46, -p.r / 2, 50, p.r);
     g.globalAlpha = 1; g.fillStyle = '#ffffff'; g.fillRect(-30, -p.r / 5, 34, Math.max(1, p.r / 2.5));
     g.restore(); return;
+  }
+  if (p.kind === 'spear') {
+    // thrown dory: the real weapon sprite, spinning slightly on the way back
+    const spr = weaponSprite('spear', G.player.wr), ang = p.back ? a + Math.PI : a;
+    g.save(); g.translate(rp(p.x), rp(p.y)); g.rotate(ang);
+    g.globalAlpha = 0.35; g.fillStyle = p.color; g.fillRect(-spr.w - 10, -1, 14, 2); g.globalAlpha = 1;
+    g.drawImage(spr.c, -spr.w + 4, -spr.h / 2, spr.w, spr.h); g.restore(); return;
   }
   if (p.kind === 'wave') { g.globalAlpha = 0.7; g.fillStyle = p.color; g.save(); g.translate(p.x, p.y); g.rotate(a); g.fillRect(-2, -8, 4, 16); g.restore(); g.globalAlpha = 1; return; }
   const r = Math.max(1, Math.round(p.r));

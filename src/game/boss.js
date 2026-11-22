@@ -16,7 +16,7 @@ import { tint } from '../engine/sprite.js';
 const tintC = {};
 export function createBoss(id, x, y) {
   const def = BOSSES[id];
-  const hp = def.hp * G.player.s.enemyHp;
+  const hp = def.hp * (1.15 + 0.15 * def.floor) * G.player.s.enemyHp; // x1.3..x1.9 since the rework: deep bosses gate on gear + tree
   const b = {
     type: id, def: { ...def, mass: 50, ash: 60 + def.floor * 25, atk: { kind: 'boss' } }, isBoss: true,
     x, y, kx: 0, ky: 0, vx: 0, vy: 0, r: def.r, size: 1, hp, maxHp: hp, armor: def.armor || 0,
@@ -129,7 +129,7 @@ const MOVES = {
       const half = (p.arc * Math.PI) / 360, R = p.range + b.r * 0.5;
       G.arcs.push({ x: b.x, y: b.y - 6, a0: b.aim - half, a1: b.aim + half, r0: R * 0.4, r1: R, t: 0, life: 0.2, color: b.def.color });
       const pl = P();
-      if (dist(b.x, b.y, pl.x, pl.y) < R + pl.r && Math.abs(angDiff(b.aim, angTo(b.x, b.y, pl.x, pl.y))) < half) hurtPlayer(Math.round(p.dmg * S()), b.x, b.y);
+      if (dist(b.x, b.y, pl.x, pl.y) < R + pl.r && Math.abs(angDiff(b.aim, angTo(b.x, b.y, pl.x, pl.y))) < half) hurtPlayer(Math.round(p.dmg * S()), b.x, b.y, { status: { kind: 'slow', t: 1.2 } });
       sfx.swing(true); shake(0.15);
       yield 0.12;
     }
@@ -227,7 +227,7 @@ export function updateBoss(b, dt) {
     moveCollide(G.room, b, b.dash.vx * dt, b.dash.vy * dt, true);
     if (b.dash.trail && Math.random() < dt * 30) hz({ kind: 'circle', x: b.x, y: b.y, r: 9, wind: 0.5, dmg: Math.round(10 * S()), color: '#ff8f3a' });
     const pl = P();
-    if (!b.dash.hit && dist(b.x, b.y, pl.x, pl.y) < b.r + pl.r + 2) { b.dash.hit = true; hurtPlayer(b.dash.dmg, b.x, b.y); }
+    if (!b.dash.hit && dist(b.x, b.y, pl.x, pl.y) < b.r + pl.r + 2) { b.dash.hit = true; hurtPlayer(b.dash.dmg, b.x, b.y, { status: { kind: 'stun', t: 0.45 } }); }
     if (Math.random() < 0.7) burst(b.x, b.y, 1, '#6b5f82', 30);
   }
   moveCollide(G.room, b, (b.vx + b.kx) * dt, (b.vy + b.ky) * dt, true);

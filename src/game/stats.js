@@ -1,16 +1,19 @@
 // Pure stat pipeline: hero base -> meta tree -> equipped items -> run boons.
 // Used by the game, the inventory screen (live preview) and the balance sim.
 import { HERO, WEAPONS, ROLL, loadClass } from '../data/weapons.js';
+import { G } from './state.js';
 import { TREE } from '../data/tree.js';
 import { BOON } from '../data/boons.js';
 import { BASES, WEIGHT, SLOT_MUL, AFFIXES, RELICS, ELEMENTS, itemPower } from '../data/items.js';
+const ASPECT_IDX = ['blood', 'fire', 'frost', 'storm', 'shadow'];
 
 export function baseStats() {
   return {
     maxHp: HERO.hp, maxSta: HERO.sta, staRegen: HERO.staRegen, speed: HERO.speed,
     crit: HERO.crit, critMul: HERO.critMul, poiseDmg: 1, backstab: 0,
     dmgMul: 1, atkSpeed: 1, dmgTaken: 1, ashMul: 1, healMul: 1, findMul: 1, matMul: 1,
-    flasks: HERO.flasks, flaskHeal: HERO.flaskHeal, skillCd: 1, perfectWindow: 0.14, slowmo: 0.35,
+    flasks: HERO.flasks, flaskHeal: HERO.flaskHeal, perfectWindow: 0.14, slowmo: 0.35,
+    chargeRate: 75, powerMul: 1, reach: 1, leech: 0, igniteChance: 0, leg: {}, stunImm: false, slowImm: false, burnImm: false, unlocked: {},
     rallyEff: 1, rallyTime: 1.6, atkSta: 1, dodgeCost: 1, iframeBonus: 0,
     counterMul: 1, counterWindow: 0,
     armor: 0, load: 0, loadCap: HERO.loadCap,
@@ -25,6 +28,7 @@ export function baseStats() {
 }
 
 export function applyMeta(s, metaNodes) {
+  s.bag += G.save?.cheatBag || 0; // test code ARMORY widens the bag so every item fits
   for (const n of TREE) {
     const r = metaNodes[n.id] || 0;
     if (r) n.apply(s, r);
@@ -44,6 +48,33 @@ export function applyGear(s, equip, items) {
       s.load += WEIGHT[base.kind].weight * SLOT_MUL[base.slot];
     } else if (base.kind === 'relic' && it.relic && RELICS[it.relic]) RELICS[it.relic].apply(s);
     for (const a of it.affixes || []) AFFIXES[a.id]?.apply(s, Math.round(a.v * (1 + 0.04 * it.up)));
+    // titanic property
+    if (it.tp) {
+      const k = it.tp.k;
+      if (k === 'aspect') { const asp = ASPECT_IDX[it.tp.n]; s.gearAspects[asp] = (s.gearAspects[asp] || 0) + 1; }
+      else if (k === 'ignite') s.igniteChance += 0.12;
+      else if (k === 'keen') { s.crit += 0.06; s.critMul += 0.25; }
+      else if (k === 'might') s.powerMul *= 1.2;
+      else if (k === 'leech') s.leech += 0.015;
+      else if (k === 'breath') { s.maxSta += 25; s.staRegen *= 1.1; }
+    }
+    // divine power (flag read by combat/player; pure stat parts applied here)
+    if (it.legend) {
+      s.leg[it.base] = true;
+      switch (it.base) {
+        case 'w_dagger': s.speed *= 1.2; break;
+        case 'w_great': s.powerMul *= 1.3; break;
+        case 'w_cleaver': s.powerMul *= 1.25; break;
+        case 'h_light': s.speed *= 1.15; break;
+        case 'h_heavy': s.dmgTaken *= 0.85; s.stunImm = true; break;
+        case 'c_heavy': s.slowImm = true; s.burnImm = true; s.armor += 15; break;
+        case 'g_medium': s.powerMul *= 1.4; break;
+        case 'g_heavy': s.chargeRate *= 1.4; break;
+        case 'b_light': s.perfectWindow *= 2; s.dodgeCost *= 0.7; break;
+        case 'b_medium': s.cards += 1; break;
+        case 'b_heavy': s.slowImm = true; s.dmgTaken *= 0.8; break;
+      }
+    }
     if (it.infuse) {
       if (it.infuse.startsWith('root:')) s.roots[it.infuse.slice(5)] = true;
       else if (ELEMENTS.includes(it.infuse)) {

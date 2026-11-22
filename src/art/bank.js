@@ -50,6 +50,14 @@ export function weaponSprite(key, rarity = 0) {
   return wcache.get(k);
 }
 
+// silhouette of a weapon in a god's colour (aspect aura drawn behind the blade)
+const tcache = new Map();
+export function weaponTint(key, rarity, color) {
+  const k = key + '|' + rarity + '|' + color;
+  if (!tcache.has(k)) tcache.set(k, tint(weaponSprite(key, rarity), color));
+  return tcache.get(k);
+}
+
 export function bakeAll() {
   for (const [k, rows] of Object.entries(WEAPON)) SPR.weapon[k] = bake(rows, { accent: HERO.accent });
   for (const [el, acc] of Object.entries({ none: HERO.accent, ...ELEMENT_ACCENT })) SPR.weapon['arrow_' + el] = bake(WEAPON.arrow, { accent: acc });

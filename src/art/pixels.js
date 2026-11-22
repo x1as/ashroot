@@ -62,6 +62,16 @@ export const WEAPON = {
     'Nn....', 'w.n...', 'w..n..', 'w...n.', 'w...n.', 'w....n', 'w....n', 'w....N',
     'w....n', 'w....n', 'w...n.', 'w...n.', 'w..n..', 'w.n...', 'Nn....',
   ],
+  // dory: long ash shaft, leaf-shaped bronze head
+  spear: ['...................YSs...', 'NnNnNnNnNnNnNnNnNnNYSSssw', '...................YSs...'],
+  // labrys: double crescent blades at the head (one each side of the haft)
+  labrys: ['...........wSs..', '..........wSSSs.', '..........SSSSS.', '...........SSS..', 'NnNnNnNnNnNTYTNn', '...........SSS..', '..........SSSSS.', '..........wSSSs.', '...........wSs..'],
+  // pelekys: one huge bearded blade, haft on the centre line
+  pelekys: ['..........wwww.', '.........wSSSSs', '.........SSSSSs', '..........SSSs.', 'NnNnNnNnNnTYTnN', '...............', '...............', '...............', '...............'],
+  // the titan's cleaver: a slab of raw iron with a hilt
+  cleaver: ['....YSSSSSSSSSSSSSSSSSSSs..', 'NNNNYSSSSSSSSSSSSSSSSSSSSSw', 'NNNNYsssssssssssssssssssssw', '....YSSSSSSSSSSSSSSSSSSSSs.', '....YTTTTTTTTTTTTTTTTTTT...'],
+  // aspis: round bronze hoplite shield (carried on the off arm)
+  shield: ['...TTT...', '.TTSSSTT.', '.TSsssST.', 'TSswYwsST', 'TSsYYYsST', 'TSswYwsST', '.TSsssST.', '.TTSSSTT.', '...TTT...'],
   arrow: ['x......', 'xnnnnss', 'x......'],
   bonearrow: ['b.....', 'bccccw', 'b.....'],
 };

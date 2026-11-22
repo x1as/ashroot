@@ -180,7 +180,6 @@ body.is-touch.in-game:not(.overlay) #touch { display: block; }
 .tb.down { background: rgba(236, 228, 208, .25); transform: scale(.94); }
 .tb.attack { right: 0; bottom: 0; width: 88px; height: 88px; font-size: 30px; border-color: var(--acc); }
 .tb.dodge { right: 100px; bottom: 6px; width: 66px; height: 66px; }
-.tb.skill { right: 14px; bottom: 100px; width: 62px; height: 62px; background: conic-gradient(rgba(5, 3, 10, .85) calc(var(--cd, 0) * 360deg), rgba(9, 7, 14, .55) 0); border-color: var(--acc); }
 .tb.flask { right: 96px; bottom: 92px; width: 50px; height: 50px; font-size: 18px; color: #93e2ff; }
 .tb.flask::after { content: attr(data-n); position: absolute; right: -4px; top: -6px; font-size: 12px; color: var(--bone); }
 #btn-pause { position: fixed; top: max(10px, env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: 38px; height: 38px; background: rgba(9, 7, 14, .6); border: 1px solid var(--line); color: var(--ash); font-weight: 700; }
@@ -406,6 +405,10 @@ body.in-menu #toasts, body.in-menu #matfeed, body.overlay #matfeed { display: no
 .card2 .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .card2 .tech { margin: 0; color: var(--ash); line-height: 1.45; font-size: 16px; }
 .card2 .tech b { color: var(--bone); font-weight: 700; }
+.card2 .mu { margin: 0; color: #8d8473; font-size: 14px; line-height: 1.4; }
+.card2 .titan { margin: 0; padding: 6px 10px; color: #d9c6ff; background: rgba(123, 85, 201, .16); border-left: 3px solid #b88cff; line-height: 1.45; font-size: 15px; }
+.card2 .legend { margin: 0; padding: 8px 10px; color: #fff3d0; background: linear-gradient(90deg, rgba(255, 211, 107, .22), rgba(255, 211, 107, .04)); border-left: 3px solid #ffd36b; line-height: 1.45; font-size: 15px; text-shadow: 0 0 8px rgba(255, 211, 107, .35); }
+.card2 .titan b, .card2 .legend b { color: #fff; }
 .card2 .flavor { font-size: 15px; }
 .diff2 h4 { margin: 0 0 4px; font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--bronze); }
 .diff2 ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-variant-numeric: tabular-nums; }
@@ -446,3 +449,15 @@ body.in-menu #toasts, body.in-menu #matfeed, body.overlay #matfeed { display: no
   .tipcards .card2:nth-child(2) { display: none; }
   .flist { max-height: 40vh; }
 }
+
+/* settings: test codes + reset */
+#settings .cheat { display: grid; gap: 8px; width: min(520px, calc(100vw - 32px)); }
+#settings label { color: var(--ash); font-size: 16px; }
+#settings .cheat-row { display: flex; gap: 8px; }
+#settings input { flex: 1; min-width: 0; font: inherit; font-size: 20px; letter-spacing: .08em; padding: 10px 14px; background: rgba(8, 6, 13, .85); color: var(--bone); border: 1px solid var(--line); text-transform: uppercase; }
+#settings input:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+#settings #cheat-out { margin: 0; min-height: 1.4em; font-size: 16px; }
+#settings #cheat-out.good { color: #b4ec5f; }
+#settings #cheat-out.bad { color: #e0404f; }
+#settings .danger-zone { width: min(520px, calc(100vw - 32px)); border: 1px solid rgba(224, 64, 79, .45); padding: 12px 14px; display: grid; gap: 10px; }
+#settings .danger-zone p { margin: 0; color: var(--ash); font-size: 15px; line-height: 1.45; }

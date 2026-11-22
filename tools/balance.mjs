@@ -9,12 +9,26 @@ import { computeStats as cs } from '../src/game/stats.js';
 
 // one hero: a 'class' here is a weapon type, worn with the starter light set (common, +0)
 const baseOf = (wk) => Object.keys(BASES).find((k) => BASES[k].kind === wk);
-const item = (base) => ({ base, slot: BASES[base].slot, rarity: 0, ilvl: 1, up: 0, affixes: [], infuse: null });
-const computeStats = (wk, meta = {}) => cs(meta, { weapon: item(baseOf(wk)), helm: item('h_light'), chest: item('c_light') });
+const item = (base, rarity = 0, ilvl = 1, up = 0) => ({ base, slot: BASES[base].slot, rarity, ilvl, up, affixes: [], infuse: null });
+const computeStats = (wk, meta = {}, g = null) => g
+  ? cs(meta, { weapon: item(baseOf(wk), g.r, g.ilvl, g.up), helm: item('h_medium', g.r, g.ilvl, g.up), chest: item('c_medium', g.r, g.ilvl, g.up), gloves: item('g_medium', g.r, g.ilvl, g.up), boots: item('b_light', g.r, g.ilvl, g.up) })
+  : cs(meta, { weapon: item(baseOf(wk)), helm: item('h_light'), chest: item('c_light') });
+// PROGRESSION CONTRACT: the hero expected at each depth (share of the tree bought, gear rarity / level / forge upgrades).
+// A fresh hero must be GATED from depth 3 on: you have to grow in every system to go deeper.
+const EXPECT = [null,
+  { tree: 0, gear: { r: 0, ilvl: 1, up: 0 } },
+  { tree: 0.2, gear: { r: 1, ilvl: 2, up: 2 } },
+  { tree: 0.4, gear: { r: 1, ilvl: 3, up: 4 } },
+  { tree: 0.65, gear: { r: 2, ilvl: 4, up: 6 } },
+  { tree: 0.8, gear: { r: 2, ilvl: 5, up: 7 } },
+];
+const metaFrac = (t) => Object.fromEntries(TREE.map((n) => [n.id, Math.round(n.max * t)]));
+const expected = (cls, f) => computeStats(cls, metaFrac(EXPECT[f].tree), EXPECT[f].gear);
 
 const UPTIME = 0.45;        // share of a fight you can actually attack (rest = dodging/positioning)
 const PICK_POWER = 1.05;    // average offensive value of one run upgrade (multiplicative)
-const TARGET = { ttk: [0.5, 4.0], htd: [3, 13], boss: [40, 130] };
+const TARGET = { ttk: [0.2, 5.5], htd: [3, 14], boss: [35, 130] };
+const PICKS = (f) => 3 * (f - 1); // offensive boons that matter by the start of depth f
 const warn = [];
 const flag = (ok, msg) => { if (!ok) warn.push(msg); return ok ? '' : ' !'; };
 
@@ -42,15 +56,24 @@ function dpsVs(cls, e, f, stats, picks) {
   const hits = hitList(c);
   const ratio = hits.reduce((s, h) => s + hitVs(cls, h, e, f), 0) / hits.reduce((s, h) => s + h, 0);
   const crit = 1 + stats.crit * (stats.critMul - 1);
-  // blinking casters punish slow melee (time lost chasing)
-  let chase = 1;
-  if (e.blink && c.combo) chase = cls === 'greatsword' ? 0.55 : 0.8;
-  if (e.ai === 'lunger' && cls === 'greatsword') chase *= 0.8; // fast enemies vs slow swings
-  if (e.ai === 'lunger' && (cls === 'staff' || cls === 'bow')) chase *= 0.85;
+  const chase = chaseMul(cls, e);
   // poise: if one hit breaks the enemy's stance it loses attacks -> more uptime (stagger-lock)
   const maxHit = Math.max(...hits) * c.poiseDmg;
   const stagger = e.poise && maxHit >= e.poise ? 1.25 : 1;
-  return rawDps(c) * ratio * crit * stagger * stats.dmgMul * Math.pow(PICK_POWER, picks) * chase;
+  const exe = c.execute && !e.boss ? 1 / (1 - c.execute * 0.6) : 1; // executions skip the last slice of HP
+  const bleed = c.bleedOnHit ? 1.12 : 1;
+  return rawDps(c) * ratio * crit * stagger * stats.dmgMul * Math.pow(PICK_POWER, picks) * chase * exe * bleed;
+}
+// time lost chasing / gained by reach: heavy weapons lose to blinkers and lungers, the dory and machairai punish them
+const HEAVY = ['greatsword', 'pelekys', 'cleaver'];
+function chaseMul(cls, e) {
+  const c = CLASSES[cls];
+  let k = 1;
+  if (e.blink && c.combo) k *= HEAVY.includes(cls) ? 0.55 : cls === 'spear' ? 1.05 : 0.8;
+  if (e.ai === 'lunger') k *= HEAVY.includes(cls) ? 0.8 : cls === 'dagger' || cls === 'spear' ? 1.2 : cls === 'sword' ? 1.25 : cls === 'staff' || cls === 'bow' ? 0.85 : 1;
+  if (e.ai === 'ranged') k *= cls === 'spear' || cls === 'dagger' ? 1.15 : cls === 'aspis' ? 1.2 : HEAVY.includes(cls) ? 0.85 : 1;
+  if (e.ai === 'caster' && cls === 'aspis') k *= 1.15;
+  return k;
 }
 
 function line(cells, w = 9) { return cells.map((c, i) => (i === 0 ? String(c).padEnd(18) : String(c).padStart(w))).join(''); }
@@ -72,44 +95,46 @@ for (const id of BOSS_ORDER) {
 const warOpen = CLASSES.greatsword.combo[0].wind + CLASSES.greatsword.combo[0].act;
 console.log(`warrior opener ${warOpen.toFixed(2)}s vs min punish ${MIN_PUNISH}s` + flag(warOpen <= MIN_PUNISH, 'warrior opener longer than min punish window'));
 
-for (const [label, meta] of [['FRESH (no tree)', {}], ['HALF TREE', metaHalf], ['FULL TREE', metaFull]]) {
-  console.log(`\n=== ${label}: TTK seconds (start of floor, ${UPTIME * 100}% uptime) ===`);
+for (const label of ['EXPECTED', 'FRESH']) {
+  const st = (cls, f) => (label === 'EXPECTED' ? expected(cls, f) : computeStats(cls));
+  console.log(`\n=== ${label} hero: TTK seconds (start of depth, ${UPTIME * 100}% uptime) ===`);
   for (const f of [1, 3, 5]) {
-    console.log(`-- floor ${f}`);
+    console.log(`-- depth ${f}` + (label === 'EXPECTED' ? `  (tree ${EXPECT[f].tree * 100}%, gear r${EXPECT[f].gear.r} +${EXPECT[f].gear.up})` : ''));
     console.log(line(['enemy', ...CLASS_ORDER]));
     for (const [id, e] of Object.entries(ENEMIES)) {
       const cells = [id];
       for (const cls of CLASS_ORDER) {
-        const s = computeStats(cls, meta);
-        const hp = e.hp * SCALE.hp(f);
-        const ttk = hp / (dpsVs(cls, e, f, s, 5 * (f - 1)) * UPTIME);
-        cells.push(ttk.toFixed(2) + (label.startsWith('FRESH') ? flag(ttk >= TARGET.ttk[0] * 0.5 && ttk <= TARGET.ttk[1] * 1.6, `${label} f${f} ${cls} vs ${id}: TTK ${ttk.toFixed(1)}s`) : ''));
+        const ttk = e.hp * SCALE.hp(f) / (dpsVs(cls, e, f, st(cls, f), PICKS(f)) * UPTIME);
+        cells.push(ttk.toFixed(2) + (label === 'EXPECTED' ? flag(ttk >= TARGET.ttk[0] && ttk <= TARGET.ttk[1] * (e.shield ? 1.6 : 1), `${label} d${f} ${cls} vs ${id}: TTK ${ttk.toFixed(1)}s`) : ''));
       }
       console.log(line(cells));
     }
   }
-  console.log(`\n=== ${label}: hits to die (enemy hit = exact dmg, no RNG) ===`);
-  console.log(line(['floor', ...CLASS_ORDER]));
+  console.log(`\n=== ${label} hero: hits to die (enemy hit = exact dmg, no RNG) ===`);
+  console.log(line(['depth', ...CLASS_ORDER]));
   for (const f of [1, 2, 3, 4, 5]) {
-    const avgDmg = Object.values(ENEMIES).reduce((s, e) => s + e.dmg, 0) / Object.keys(ENEMIES).length * SCALE.dmg(f);
-    const cells = [`f${f} avg ${avgDmg.toFixed(1)}`];
+    const avgDmg = Object.values(ENEMIES).reduce((a, e) => a + e.dmg, 0) / Object.keys(ENEMIES).length * SCALE.dmg(f);
+    const cells = [`d${f} avg ${avgDmg.toFixed(1)}`];
+    let sum = 0;
     for (const cls of CLASS_ORDER) {
-      const s = computeStats(cls, meta);
-      const hp = s.maxHp + 12 * Math.floor((f - 1) * 0.8); // ~1 vigor pick per floor
-      const htd = hp / (avgDmg * s.dmgTaken);
-      cells.push(htd.toFixed(1) + (label.startsWith('FRESH') ? flag(htd >= TARGET.htd[0] - 0.8 && htd <= TARGET.htd[1], `${label} f${f} ${cls}: ${htd.toFixed(1)} hits to die`) : ''));
+      const s2 = st(cls, f);
+      const htd = (s2.maxHp + 8 * (f - 1)) / (avgDmg * s2.dmgTaken);
+      sum += htd;
+      cells.push(htd.toFixed(1) + (label === 'EXPECTED' ? flag(htd >= TARGET.htd[0] && htd <= TARGET.htd[1], `${label} d${f} ${cls}: ${htd.toFixed(1)} hits to die`) : ''));
     }
+    if (label === 'FRESH' && f >= 3) flag(sum / CLASS_ORDER.length < (f === 3 ? 4.6 : 4.2), `fresh hero not gated at depth ${f}: ${(sum / CLASS_ORDER.length).toFixed(1)} hits to die`);
     console.log(line(cells));
   }
-  console.log(`\n=== ${label}: boss fight length, seconds ===`);
+  if (label === 'FRESH') continue;
+  console.log(`\n=== ${label} hero: boss fight length, seconds ===`);
   console.log(line(['boss', ...CLASS_ORDER]));
   for (const id of BOSS_ORDER) {
     const b = BOSSES[id];
-    const cells = [`${id} ${b.hp}`];
+    const BM = 1.15 + 0.15 * b.floor;
+    const cells = [`${id} ${Math.round(b.hp * BM)}`];
     for (const cls of CLASS_ORDER) {
-      const s = computeStats(cls, meta);
-      const t = b.hp / (dpsVs(cls, { armor: b.armor, hp: b.hp }, b.floor, s, 5 * b.floor) * UPTIME);
-      cells.push(t.toFixed(0) + flag(t >= TARGET.boss[0] * (label.startsWith('FULL') ? 0.5 : 1) && t <= TARGET.boss[1] * (label.startsWith('FRESH') ? 1.3 : 1), `${label} ${id} vs ${cls}: ${t.toFixed(0)}s`));
+      const t = b.hp * BM / (dpsVs(cls, { armor: b.armor, hp: b.hp, boss: true }, b.floor, st(cls, b.floor), PICKS(b.floor) + 3) * UPTIME);
+      cells.push(t.toFixed(0) + flag(t >= TARGET.boss[0] && t <= TARGET.boss[1], `${label} ${id} vs ${cls}: ${t.toFixed(0)}s`));
     }
     console.log(line(cells));
   }

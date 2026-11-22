@@ -1,3 +1,4 @@
+import { showSettings, initSettings } from './settings.js';
 // DOM overlays: reward cards, bonfire, pause, death / victory.
 import { G } from '../game/state.js';
 import { ASPECTS, BOON, RESONANCE } from '../data/boons.js';
@@ -127,10 +128,12 @@ export const ui = {
 const save = () => G.save;
 
 export function initScreens() {
+  initSettings();
   $('btn-resume').onclick = () => ui.togglePause();
   $('btn-abandon').onclick = () => { closeOverlay('pause'); G.player.hp = 0; G.player.die(); };
   $('btn-mute').onclick = () => { const s = save(); s.muted = !s.muted; setMuted(s.muted); writeSave(s); $('btn-mute').textContent = s.muted ? 'Звук: выкл' : 'Звук: вкл'; };
   $('btn-pause').onclick = () => ui.togglePause();
+  $('btn-settings-pause').onclick = () => { $('pause').hidden = true; showSettings(() => { $('pause').hidden = false; }); };
   $('btn-gear-pause').onclick = () => { closeOverlay('pause'); showGear({ forge: false, onClose: () => {} }); };
   initGear();
   ui.showGear = showGear;

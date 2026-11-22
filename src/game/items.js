@@ -1,4 +1,6 @@
+import { BASE_WEAPONS } from '../data/tree.js';
 // Inventory, loot generation and the forge (upgrade / infuse / salvage). Mutates G.save.inv.
+import { TITAN_KEYS } from '../data/items.js';
 import { BASES, RARITY, AFFIXES, AFFIX_POOL, RELICS, SUFFIX, LEGEND_SUFFIX, upgradeCost, infuseCost, salvageYield, RESOURCES } from '../data/items.js';
 
 let uidSeq = Date.now() % 1e6;
@@ -19,6 +21,8 @@ export function makeItem(baseId, ilvl, rarity, o = {}) {
   const it = { uid: uid(), base: baseId, slot: base.slot, rarity, ilvl, up: 0, infuse: null, affixes: [], name: o.name || base.name };
   if (!o.name && rarity > 0) it.name = rarity === 3 ? base.legend || base.name + LEGEND_SUFFIX : base.name + pickOne(SUFFIX);
   if (base.kind === 'relic') it.relic = o.relic || pickOne(Object.keys(RELICS));
+  if (rarity === 2) it.tp = o.tp || { k: pickOne(TITAN_KEYS), n: Math.floor(Math.random() * 5) };
+  if (rarity === 3 && base.kind !== 'relic') it.legend = true;
   if (o.affixes) it.affixes = o.affixes;
   else {
     const pool = base.slot === 'weapon' ? AFFIX_POOL.weapon : base.kind === 'acc' || base.kind === 'relic' ? AFFIX_POOL.acc : AFFIX_POOL.armor;
@@ -37,11 +41,12 @@ export function rarityWeights(ilvl, min = 0, boost = false) {
   return w;
 }
 export function rarityChances(ilvl, min = 0, boost = false) { const w = rarityWeights(ilvl, min, boost), t = w.reduce((a, b) => a + b, 0); return w.map((x) => x / t); }
-export function rollLoot(ilvl, min = 0, boost = false) {
+// weapon types drop only once unlocked on the Tree (sword, club, bow from the start)
+export function rollLoot(ilvl, min = 0, boost = false, unlocked = {}) {
   const w = rarityWeights(ilvl, min, boost);
   let r = Math.random() * w.reduce((a, b) => a + b, 0), rarity = 0;
   for (let i = 0; i < 4; i++) { r -= w[i]; if (r <= 0) { rarity = i; break; } }
-  const keys = Object.keys(BASES).filter((k) => k !== 'x_relic' || rarity >= 1);
+  const keys = Object.keys(BASES).filter((k) => (k !== 'x_relic' || rarity >= 1) && (BASES[k].slot !== 'weapon' || BASE_WEAPONS.includes(BASES[k].kind) || unlocked[BASES[k].kind]));
   const baseId = Math.random() < 0.08 && rarity >= 1 ? 'x_relic' : pickOne(keys);
   return makeItem(baseId, ilvl, Math.max(rarity, baseId === 'x_relic' ? 1 : 0));
 }

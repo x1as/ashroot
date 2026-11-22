@@ -11,6 +11,9 @@ import { emit } from '../game/events.js';
 import { sfx, initAudio } from '../engine/audio.js';
 import { startRun, runStats } from '../game/run.js';
 import { gearLook } from '../game/player.js';
+import { showSettings } from './settings.js';
+import { makeItem, addItem } from '../game/items.js';
+import { BASES } from '../data/items.js';
 
 const TW = 380, TH = 262;
 const TRUNK = { x: 190, y0: 238, y1: 128 };
@@ -73,6 +76,7 @@ export function initMenu(canvas) {
   canvas.addEventListener('wheel', (e) => { if (G.mode !== 'menu') return; e.preventDefault(); M.cam.s = clamp(M.cam.s + (e.deltaY < 0 ? 1 : -1), M.minS, M.minS + 4); sizeBuf(); clampCam(); }, { passive: false });
   document.getElementById('btn-descend').addEventListener('click', () => { initAudio(); sfx.door(); hideMenu(); startRun(); });
   document.getElementById('btn-gear').addEventListener('click', () => { initAudio(); sfx.ui(); G.ui.showGear({ forge: true }); });
+  document.getElementById('btn-settings').addEventListener('click', () => { initAudio(); sfx.ui(); showSettings(() => { G.paused = false; document.body.classList.remove('overlay'); renderPanel(); }); });
   for (let i = 0; i < 40; i++) embers.push(newEmber(true));
 }
 function newEmber(init) { return { x: rand(0, TW), y: init ? rand(0, TH) : TH + 4, vy: -rand(4, 12), vx: rand(-3, 3), c: Math.random() < 0.7 ? '#b8aa90' : '#ff8f3a', life: rand(4, 12) }; }
@@ -147,7 +151,7 @@ export function renderPanel() {
         <div><dt>Урон/с</dt><dd>${(rawDps(W) * s.dmgMul).toFixed(0)}</dd></div>
         <div><dt>Броня</dt><dd>${Math.round(s.armor)}</dd></div>
       </dl>
-      <p class="skill"><b>${W.skill.name}.</b> ${W.skill.desc}</p>
+      <p class="skill"><b>Усиленная атака: ${W.power.name}.</b> ${W.power.desc}</p>
       <p class="mu">Нагрузка ${Math.round(s.load)}/${Math.round(s.loadCap)} · перекат: <b>${ROLL[s.roll].name.toLowerCase()}</b><br>
       <span class="good">Силён против:</span> ${W.strong}<br><span class="bad">Слаб против:</span> ${W.weak}</p>
       ${save.respecRefund ? `<p class="echo">Древо выросло заново: вложенный пепел (${save.respecRefund}) возвращён.</p>` : ''}
@@ -175,6 +179,11 @@ export function renderPanel() {
     if (save.ash < cost || maxed || !can) return;
     save.ash -= cost; save.nodes[n.id] = r + 1; save.respecRefund = 0; writeSave(save);
     emit('nodeBuy', { id: n.id, rank: r + 1 });
+    if (n.weapon && r === 0) {
+      // unlocking a weapon type hands over the first one (heroic) right away
+      const baseId = Object.keys(BASES).find((k) => BASES[k].slot === 'weapon' && BASES[k].kind === n.weapon);
+      if (baseId) { const it = makeItem(baseId, Math.max(1, save.stats.bestFloor || 1), 1); addItem(save.inv, it, runStats().bag); writeSave(save); }
+    }
     sfx.pick(); M.pulse = { n, t: 0 };
     renderPanel();
   };
