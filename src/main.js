@@ -39,6 +39,9 @@ function resize() {
 function boot() {
   G.debug = /[?&]debug/.test(location.search);
   G.save = loadSave();
+  // older saves kept fractional ash (ash multipliers): whole numbers only from now on
+  G.save.ash = Math.round(G.save.ash || 0); if (G.save.echo) G.save.echo.ash = Math.round(G.save.echo.ash);
+  for (const k in G.save.inv.mats) G.save.inv.mats[k] = Math.round(G.save.inv.mats[k]);
   setMuted(G.save.muted);
   bakeAll();
   initInput(canvas);
@@ -93,7 +96,7 @@ function installDebug() {
   addEventListener('keydown', (e) => {
     if (G.mode !== 'game') return;
     if (e.code === 'KeyN') { for (const en of G.enemies) if (!en.dead) { en.hp = 0; killEnemy(en); } if (G.room.state) G.room.state.wave = G.room.state.waves.length - 1; }
-    if (e.code === 'KeyH') { G.player.hp = G.player.s.maxHp; }
+    if (e.code === 'KeyH') { G.player.hp = G.player.s.maxHp; G.player.ward = G.player.s.ward; }
     if (e.code === 'KeyG') { G.save.ash += 500; writeSave(G.save); }
     if (e.code === 'KeyB') { enterRoom(ROOM_PLAN.length - 1); }
     if (e.code === 'KeyO') { openExits(G.room); }

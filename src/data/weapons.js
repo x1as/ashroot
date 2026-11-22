@@ -8,7 +8,8 @@
 export const HERO = {
   name: 'Геракл',
   title: 'Пепел с костра Эты',
-  hp: 90, sta: 150, staRegen: 60, speed: 92,
+  // hp = HEARTS: every enemy hit costs a whole heart (heavy blows two)
+  hp: 5, sta: 150, staRegen: 60, speed: 92,
   crit: 0.06, critMul: 2.0,
   flasks: 2, flaskHeal: 0.4,
   loadCap: 30,
@@ -25,33 +26,33 @@ export const loadClass = (ratio) => (ratio < 0.35 ? 'light' : ratio < 0.7 ? 'med
 // style: how swings look; move: speed multiplier while attacking
 export const WEAPONS = {
   sword: {
-    name: 'Ксифос', tagline: 'Меч гоплита: баланс скорости и широких дуг', unlock: null,
+    name: 'Ксифос', tagline: 'Меч гоплита: две широкие дуги и выпад-луч на добивании', unlock: null,
     sprite: 'sword', style: 'arc', move: 0.55, dmgType: 'slash', poiseDmg: 1.2, rally: 0.3,
     combo: [
       { dmg: 17, wind: 0.12, act: 0.06, rec: 0.18, range: 31, arc: 150, sta: 12 },
       { dmg: 17, wind: 0.10, act: 0.06, rec: 0.18, range: 31, arc: 150, sta: 12 },
-      { dmg: 32, wind: 0.20, act: 0.08, rec: 0.30, range: 35, arc: 220, sta: 18, finisher: true },
+      { dmg: 34, wind: 0.20, act: 0.08, rec: 0.30, range: 48, width: 10, arc: 30, shape: 'line', sta: 18, finisher: true },
     ],
     power: { name: 'Серп Персея', desc: 'Волны-полумесяцы рассекают всё на пути: 1, 3 или 5 волн. Полная шкала: кольцо из клинков вокруг героя.' },
     strong: 'неупокоенные, псы Гекаты', weak: 'гоплиты спереди',
   },
   dagger: {
-    name: 'Махайры', tagline: 'Парные клинки: скорость, удар в спину, криты', unlock: 'v_dagger',
+    name: 'Махайры', tagline: 'Парные клинки: короткие уколы конусом и крест на добивании', unlock: 'v_dagger',
     sprite: 'dagger', style: 'twin', move: 0.8, dmgType: 'slash', poiseDmg: 0.6, rally: 0.4, critBonus: 0.06, backstab: 0.5,
     combo: [
-      { dmg: 10, wind: 0.07, act: 0.05, rec: 0.13, range: 24, arc: 120, sta: 6 },
-      { dmg: 10, wind: 0.06, act: 0.05, rec: 0.13, range: 24, arc: 120, sta: 6 },
-      { dmg: 22, wind: 0.11, act: 0.06, rec: 0.24, range: 28, arc: 180, sta: 10, finisher: true },
+      { dmg: 10, wind: 0.07, act: 0.05, rec: 0.13, range: 27, arc: 64, shape: 'cone', sta: 6 },
+      { dmg: 10, wind: 0.06, act: 0.05, rec: 0.13, range: 27, arc: 64, shape: 'cone', sta: 6 },
+      { dmg: 24, wind: 0.11, act: 0.06, rec: 0.24, range: 32, width: 7, arc: 120, shape: 'cross', sta: 10, finisher: true },
     ],
     power: { name: 'Танец теней', desc: 'Вихрь из 3–12 молниеносных порезов вокруг героя, каждый оставляет теневой след. Полная шкала: финальный крест.' },
     strong: 'ламии, спарты, отпрыски Гидры', weak: 'гоплиты (броня режет мелкие удары)',
   },
   greatsword: {
-    name: 'Палица', tagline: 'Оливковая палица Геракла: тяжёлые удары, пробой стойки', unlock: null,
+    name: 'Палица', tagline: 'Оливковая палица Геракла: тяжёлая дуга и удар сверху в точку', unlock: null,
     sprite: 'club', style: 'smash', move: 0.35, dmgType: 'slash', poiseDmg: 2.2, rally: 0.14, guardBreak: true, critMul: -0.2,
     combo: [
       { dmg: 33, wind: 0.30, act: 0.08, rec: 0.30, range: 38, arc: 160, sta: 22, hyper: true },
-      { dmg: 48, wind: 0.36, act: 0.10, rec: 0.40, range: 42, arc: 210, sta: 26, hyper: true, finisher: true },
+      { dmg: 50, wind: 0.36, act: 0.10, rec: 0.40, range: 26, r: 26, arc: 120, shape: 'impact', sta: 26, hyper: true, finisher: true },
     ],
     power: { name: 'Гнев Геракла', desc: 'Удар о землю и расходящиеся волны. Полная шкала: трещины в шесть сторон с огнём из-под земли.' },
     strong: 'гоплиты, неупокоенные', weak: 'псы Гекаты (быстрые), ламии (телепорт)',
@@ -71,23 +72,23 @@ export const WEAPONS = {
     strong: 'ламии, неупокоенные, отпрыски Гидры', weak: 'спарты (стрелы сквозь рёбра), гоплиты',
   },
   spear: {
-    name: 'Дори', tagline: 'Копьё гоплита: самая длинная дистанция, узкие уколы', unlock: 'v_spear',
+    name: 'Дори', tagline: 'Копьё гоплита: уколы-лучи на всю длину и широкий мах на добивании', unlock: 'v_spear',
     sprite: 'spear', style: 'thrust', move: 0.65, dmgType: 'pierce', poiseDmg: 1.0, rally: 0.28, critBonus: 0.03,
     combo: [
-      { dmg: 15, wind: 0.10, act: 0.07, rec: 0.16, range: 50, arc: 34, sta: 9 },
-      { dmg: 15, wind: 0.09, act: 0.07, rec: 0.16, range: 50, arc: 34, sta: 9 },
-      { dmg: 30, wind: 0.18, act: 0.09, rec: 0.28, range: 58, arc: 44, sta: 15, finisher: true },
+      { dmg: 15, wind: 0.10, act: 0.07, rec: 0.16, range: 52, width: 8, arc: 30, shape: 'line', sta: 9 },
+      { dmg: 15, wind: 0.09, act: 0.07, rec: 0.16, range: 52, width: 8, arc: 30, shape: 'line', sta: 9 },
+      { dmg: 28, wind: 0.18, act: 0.09, rec: 0.28, range: 44, arc: 230, shape: 'arc', sta: 15, finisher: true },
     ],
     power: { name: 'Копьё Ахилла', desc: 'Бросок копья, которое пронзает всех и возвращается в руку. Больше заряда — больше копий. Полная шкала: дождь копий с неба.' },
     strong: 'ламии и спарты на дистанции', weak: 'толпа вплотную',
   },
   aspis: {
-    name: 'Аспис и ксифос', tagline: 'Щит гоплита: блок стрел спереди, удар щитом', unlock: 'f_aspis',
+    name: 'Аспис и ксифос', tagline: 'Щит гоплита: укол, дуга и удар щитом конусом; блок спереди', unlock: 'f_aspis',
     sprite: 'sword', shield: true, style: 'arc', move: 0.5, dmgType: 'slash', poiseDmg: 1.3, rally: 0.25,
     combo: [
-      { dmg: 15, wind: 0.12, act: 0.06, rec: 0.18, range: 29, arc: 140, sta: 11 },
-      { dmg: 15, wind: 0.11, act: 0.06, rec: 0.18, range: 29, arc: 140, sta: 11 },
-      { dmg: 28, wind: 0.18, act: 0.08, rec: 0.3, range: 30, arc: 110, sta: 16, finisher: true, bash: true },
+      { dmg: 15, wind: 0.12, act: 0.06, rec: 0.18, range: 36, width: 7, arc: 30, shape: 'line', sta: 11 },
+      { dmg: 15, wind: 0.11, act: 0.06, rec: 0.18, range: 29, arc: 140, shape: 'arc', sta: 11 },
+      { dmg: 28, wind: 0.18, act: 0.08, rec: 0.3, range: 30, arc: 90, shape: 'cone', sta: 16, finisher: true, bash: true },
     ],
     power: { name: 'Фаланга', desc: 'Удар щитом: волна бронзы отбрасывает и оглушает, а щит закрывает героя барьером. Полная шкала: купол неуязвимости.' },
     strong: 'спарты и ламии (стрелы и чары гаснут о щит)', weak: 'гоплиты, рыцари',
@@ -104,22 +105,22 @@ export const WEAPONS = {
     strong: 'толпы неупокоенных и псов', weak: 'гоплиты (броня)',
   },
   pelekys: {
-    name: 'Пелекус', tagline: 'Секира палача: медленно, страшно, добивает', unlock: 'k_pelekys',
+    name: 'Пелекус', tagline: 'Секира палача: удар сверху в точку и раскол земли вперёд, казнь', unlock: 'k_pelekys',
     sprite: 'pelekys', style: 'chop', move: 0.3, dmgType: 'slash', poiseDmg: 2.4, rally: 0.16, guardBreak: true, execute: 0.25,
     combo: [
-      { dmg: 46, wind: 0.36, act: 0.1, rec: 0.36, range: 40, arc: 120, sta: 24, hyper: true },
-      { dmg: 64, wind: 0.42, act: 0.12, rec: 0.46, range: 44, arc: 140, sta: 28, hyper: true, finisher: true },
+      { dmg: 46, wind: 0.36, act: 0.1, rec: 0.36, range: 26, r: 19, arc: 120, shape: 'impact', sta: 24, hyper: true },
+      { dmg: 64, wind: 0.42, act: 0.12, rec: 0.46, range: 66, width: 16, arc: 40, shape: 'line', sta: 28, hyper: true, finisher: true },
     ],
     power: { name: 'Казнь', desc: 'Удар сверху раскалывает землю вперёд; враги с малым запасом здоровья гибнут сразу. Полная шкала: трещина взрывается трижды.' },
     strong: 'элита и гоплиты', weak: 'быстрые псы',
   },
   cleaver: {
-    name: 'Тесак Титана', tagline: 'Кусок железа с рукоятью: огромные круги, ничто не остановит', unlock: 'k_cleaver',
+    name: 'Тесак Титана', tagline: 'Кусок железа с рукоятью: огромные дуги и удар о землю', unlock: 'k_cleaver',
     sprite: 'cleaver', style: 'cleave', move: 0.25, dmgType: 'slash', poiseDmg: 2.8, rally: 0.12, guardBreak: true, critMul: -0.3,
     combo: [
       { dmg: 42, wind: 0.34, act: 0.12, rec: 0.34, range: 48, arc: 240, sta: 24, hyper: true },
       { dmg: 42, wind: 0.3, act: 0.12, rec: 0.34, range: 48, arc: 240, sta: 24, hyper: true },
-      { dmg: 70, wind: 0.42, act: 0.14, rec: 0.5, range: 52, arc: 320, sta: 30, hyper: true, finisher: true },
+      { dmg: 72, wind: 0.42, act: 0.14, rec: 0.5, range: 30, r: 36, arc: 120, shape: 'impact', sta: 30, hyper: true, finisher: true },
     ],
     power: { name: 'Падение Титана', desc: 'Три сокрушительных круга подряд и удар о землю. Полная шкала: пять кругов и землетрясение.' },
     strong: 'всё, что стоит рядом', weak: 'всё, что стреляет издалека',

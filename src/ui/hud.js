@@ -26,24 +26,33 @@ export function drawHUD(ctx, w2s) {
   const top = 12 * hs + (G.safe?.t || 0);
   ctx.textBaseline = 'alphabetic';
 
-  // ---- HP / rally / stamina ----
-  const bw = Math.round(Math.min(220 * hs, cw * 0.36)), bh = Math.round(9 * hs);
+  // ---- HEARTS / shields / stamina ----
+  const bw = Math.round(Math.min(220 * hs, cw * 0.36));
   const maxHp = P.s.maxHp;
-  P.chip = P.chip === undefined ? P.hp : P.chip + (P.hp - P.chip) * (P.hp < P.chip ? 0.04 : 0.5);
-  ctx.fillStyle = '#08060d'; ctx.fillRect(pad - 2, top - 2, bw + 4, bh + 4);
-  ctx.fillStyle = '#2a1520'; ctx.fillRect(pad, top, bw, bh);
-  const hpw = (bw * Math.max(0, P.hp)) / maxHp;
-  ctx.fillStyle = 'rgba(236,228,208,0.55)'; ctx.fillRect(pad, top, (bw * Math.max(0, P.chip)) / maxHp, bh);
-  if (P.rally > 0) {
-    const rw = (bw * Math.min(P.rally, maxHp - P.hp)) / maxHp;
-    ctx.fillStyle = P.rallyGlow > 0 ? '#ffffff' : '#8a7c68';
-    for (let x = 0; x < rw; x += 3) ctx.fillRect(pad + hpw + x, top, Math.min(2, rw - x), bh);
+  const px = Math.max(4, Math.round(4.2 * hs)); // one heart pixel, integer CSS px -> crisp
+  let hx = pad;
+  P.hpShown = P.hpShown === undefined ? P.hp : P.hpShown + (P.hp - P.hpShown) * 0.25;
+  const low = P.hp <= 1 && !P.dead;
+  for (let i = 0; i < maxHp; i++) {
+    const fill = clamp(P.hp - i, 0, 1);
+    const beat = low && i === 0 ? 1 + 0.12 * Math.max(0, Math.sin(G.real * 9)) : 1;
+    drawHeart(ctx, hx, top, px * beat, fill, P.flash > 0 && fill < 1 && P.hp - i > -1);
+    // ghost heart: the one just lost, filled back by hitting enemies before it fades
+    if (P.rally > 0 && i >= Math.floor(P.hp) && i < Math.floor(P.hp) + P.rally && fill < 1) {
+      const a = 0.35 + 0.35 * Math.sin(G.real * 10) * Math.min(1, P.rallyT);
+      drawHeart(ctx, hx, top, px, Math.min(1, fill + P.rallyProg), false, `rgba(255,255,255,${a.toFixed(2)})`);
+    }
+    hx += px * 8 + Math.round(2 * hs);
   }
-  ctx.fillStyle = P.hp < maxHp * 0.3 ? (Math.sin(G.real * 8) > 0 ? '#ff5a6a' : '#e0404f') : '#e0404f';
-  ctx.fillRect(pad, top, hpw, bh);
-  ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(pad, top, hpw, Math.max(1, bh * 0.3));
-  font(ctx, 11 * hs); ctx.textAlign = 'left'; ctx.fillStyle = '#ece4d0';
-  ctx.fillText(`${Math.max(0, Math.ceil(P.hp))} / ${maxHp}`, pad + bw + 8 * hs, top + bh - 1);
+  // bronze shields (from armour): each takes a whole blow, then comes back after a quiet moment
+  if (P.s.ward > 0 || P.frostShield > 0) hx += Math.round(4 * hs);
+  for (let i = 0; i < P.s.ward; i++) {
+    const full = i < P.ward, regen = i === P.ward ? P.wardT / P.s.wardTime : 0;
+    drawShield(ctx, hx, top, px, full ? 1 : regen, P.pburnT > 0 && !full);
+    hx += px * 8 + Math.round(2 * hs);
+  }
+  for (let i = 0; i < P.frostShield; i++) { drawShield(ctx, hx, top, px, 1, false, '#93e2ff', '#4b8fc9'); hx += px * 8 + Math.round(2 * hs); }
+  const bh = px * 7;
   // stamina: full-width bar, segmented every 25 points so costs are readable; flashes red when spent
   const sy = top + bh + 6 * hs, sh = Math.max(5, Math.round(6 * hs));
   P.staChip = P.staChip === undefined ? P.sta : P.staChip + (P.sta - P.staChip) * (P.sta < P.staChip ? 0.06 : 1);
@@ -65,7 +74,6 @@ export function drawHUD(ctx, w2s) {
   icon(ctx, 'ash', ax, fy, is);
   font(ctx, 14 * hs); ctx.fillStyle = '#ece4d0';
   ctx.fillText(Math.floor(r.ash), ax + 9 * is, fy + 6 * is);
-  if (P.frostShield > 0) { ctx.fillStyle = '#93e2ff'; ctx.fillText(`❄${Math.ceil(P.frostShield)}`, ax + 9 * is + 70 * hs, fy + 6 * is); }
   if (P.arcaneUp) { ctx.fillStyle = '#b8aa90'; ctx.fillText('кора', ax + 9 * is + 70 * hs, fy + 6 * is); }
   if (r.items.length) { ctx.fillStyle = '#ffb347'; ctx.fillText(`находки ${r.items.length}`, ax + 9 * is + 140 * hs, fy + 6 * is); }
 
@@ -117,18 +125,18 @@ export function drawHUD(ctx, w2s) {
     const st = [];
     if (P.state === 'stun') st.push(['оглушён', '#ffd36b', P.stunT - P.st]);
     if (P.slowT > 0) st.push(['замедлен', '#93e2ff', P.slowT]);
-    if (P.pbleedT > 0) st.push(['кровотечение', '#e0404f', P.pbleedT]);
-    if (P.pburnT > 0) st.push(['горишь', '#ff8f3a', P.pburnT]);
+    if (P.pbleedT > 0) st.push(['рана: без лечения', '#e0404f', P.pbleedT]);
+    if (P.pburnT > 0) st.push(['огонь: щиты плавятся', '#ff8f3a', P.pburnT]);
     if (P.rageT > 0) st.push(['ярость Ареса', '#ff3355', P.rageT]);
     if (P.invisT > 0) st.push(['невидим', '#b88cff', P.invisT]);
     if (P.domeT > 0) st.push(['купол', '#ffd36b', P.domeT]);
     font(ctx, 13 * hs); ctx.textAlign = 'center';
-    let sx = cw / 2 - (st.length - 1) * 55 * hs;
+    let sx = cw / 2 - (st.length - 1) * 83 * hs;
     for (const [n, c, t] of st) {
-      ctx.fillStyle = 'rgba(8,6,13,0.8)'; ctx.fillRect(sx - 52 * hs, ch * 0.16, 104 * hs, 20 * hs);
-      ctx.fillStyle = c; ctx.fillRect(sx - 52 * hs, ch * 0.16 + 18 * hs, 104 * hs * Math.min(1, t / 3), 2 * hs);
+      ctx.fillStyle = 'rgba(8,6,13,0.8)'; ctx.fillRect(sx - 80 * hs, ch * 0.16, 160 * hs, 20 * hs);
+      ctx.fillStyle = c; ctx.fillRect(sx - 80 * hs, ch * 0.16 + 18 * hs, 160 * hs * Math.min(1, t / 3), 2 * hs);
       ctx.fillText(`${n} ${Math.max(0, t).toFixed(1)}`, sx, ch * 0.16 + 14 * hs);
-      sx += 110 * hs;
+      sx += 166 * hs;
     }
     ctx.textAlign = 'left';
   }
@@ -206,8 +214,8 @@ export function drawHUD(ctx, w2s) {
   }
 
   // ---- vignettes / flash ----
-  const low = P.hp < maxHp * 0.3 && !P.dead ? 0.25 + 0.15 * Math.pow(Math.max(0, Math.sin(G.real * 5)), 4) : 0;
-  const va = Math.max(G.vign * 0.55, low);
+  const lowV = P.hp <= 1 && !P.dead ? 0.25 + 0.15 * Math.pow(Math.max(0, Math.sin(G.real * 5)), 4) : 0;
+  const va = Math.max(G.vign * 0.55, lowV);
   if (va > 0.01) {
     const g = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.3, cw / 2, ch / 2, Math.max(cw, ch) * 0.75);
     g.addColorStop(0, 'rgba(140,28,51,0)'); g.addColorStop(1, `rgba(140,28,51,${va})`);
@@ -224,3 +232,32 @@ export function drawHUD(ctx, w2s) {
   }
 }
 export { RESONANCE };
+
+// 7x7 pixel heart; fill 0..1 from the left (partial hearts after small heals)
+const HEART = ['.XX.XX.', 'XhrXrrX', 'XrrrrrX', 'XrrrrrX', '.XrrrX.', '..XrX..', '...X...'];
+function drawHeart(ctx, x, y, px, fill, white, ghost) {
+  x = Math.round(x); y = Math.round(y); px = Math.round(px);
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) {
+    const ch = HEART[r][c]; if (ch === '.') continue;
+    let col;
+    if (ch === 'X') col = ghost ? null : '#08060d';
+    else {
+      const on = (c - 0.5) / 6 < fill;
+      if (ghost) col = on ? ghost : null;
+      else col = white && on ? '#ffffff' : on ? (ch === 'h' || (r === 1 && c === 2) ? '#ff9aa4' : r >= 4 ? '#a8202f' : '#e0404f') : '#2a1520';
+    }
+    if (!col) continue;
+    ctx.fillStyle = col; ctx.fillRect(x + c * px, y + r * px, px, px);
+  }
+  if (!ghost) { ctx.fillStyle = '#08060d'; ctx.fillRect(x + 3 * px, y, px, px); }
+}
+const SHIELD = ['XXXXXXX', 'XhbbbbX', 'XbbYbbX', 'XbYYYbX', '.XbbbX.', '..XbX..', '...X...'];
+function drawShield(ctx, x, y, px, fill, hot, c1 = '#f0d9a0', c2 = '#c8924a') {
+  x = Math.round(x); y = Math.round(y); px = Math.round(px);
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) {
+    const ch = SHIELD[r][c]; if (ch === '.') continue;
+    const on = (6 - r + 0.5) / 7 < fill || fill >= 1;
+    ctx.fillStyle = ch === 'X' ? '#08060d' : !on ? (hot ? '#5a2a10' : '#1c1826') : ch === 'h' ? '#ffffff' : ch === 'Y' ? c2 : c1;
+    ctx.fillRect(x + c * px, y + r * px, px, px);
+  }
+}

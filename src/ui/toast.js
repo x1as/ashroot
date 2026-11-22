@@ -27,7 +27,7 @@ export function deltaLines(it) {
   const out = [];
   const add = (label, a, b, better = 1) => { const d = Math.round(b - a); if (d) out.push({ label, d, good: d * better > 0 }); };
   add('урон/с', rawDps(WEAPONS[cur.wk]) * cur.dmgMul, rawDps(WEAPONS[next.wk]) * next.dmgMul);
-  add('HP', cur.maxHp, next.maxHp); add('броня', cur.armor, next.armor); add('выносливость', cur.maxSta, next.maxSta);
+  add('щиты', cur.ward, next.ward); add('броня', cur.armor, next.armor); add('выносливость', cur.maxSta, next.maxSta);
   add('нагрузка', cur.load, next.load, -1);
   return out;
 }

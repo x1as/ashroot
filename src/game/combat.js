@@ -58,7 +58,7 @@ export function hitEnemy(e, base, o = {}) {
     if (s.leg.w_sword && P.wk === 'sword' && (e.state === 'stagger' || e.stunT > 0 || e.freeze > 0)) d *= 2;
     if (P.rageT > 0) d *= 1.15;
     if (lv('c_wrath')) d *= 1 + Math.min(0.3, 0.03 * (G.run.roomHits || 0));
-    if (lv('p_last') && P.hp < P.s.maxHp * 0.3) d *= 2;
+    if (lv('p_last') && P.hp <= 1) d *= 2;
     if (P.sapT > 0) d *= 1.3;
     if (s.roots.weight && (e.state === 'stagger' || e.stunT > 0 || e.freeze > 0)) d *= 1.5;
     // crit
@@ -88,9 +88,9 @@ export function hitEnemy(e, base, o = {}) {
   // executioner's axe: low-health enemies die outright
   if (o.execute && !dot && !e.isBoss && e.hp > 0 && e.hp < e.maxHp * o.execute) {
     e.hp = 0; text(e.x, e.y - 30, 'КАЗНЬ', '#ff3355', true); burst(e.x, e.y - 6, 20, '#8c1c33', 120, { grav: 80 }); hitstop(0.08);
-    if (lv('c_execute')) P.hp = Math.min(s.maxHp, P.hp + 8 * s.healMul);
+    if (lv('c_execute')) healHearts(0.25);
   }
-  if (s.leech && !dot) P.hp = Math.min(s.maxHp, P.hp + d * s.leech * s.healMul);
+  if (s.leech && !dot) healHearts(d * s.leech);
   e.flash = dot ? 0.04 : 0.1;
   if (!dot) {
     e.lastHitT = G.t;
@@ -110,11 +110,12 @@ export function hitEnemy(e, base, o = {}) {
     else { sfx.hit(crit); hitstop(crit ? 0.06 : o.heavy ? 0.07 : 0.035); }
     shake(crit || o.heavy ? 0.18 : 0.08);
     kick(Math.cos(ka), Math.sin(ka), crit ? 2 : 1);
-    // rally: aggression heals back recently lost HP
-    if (P.rally > 0) {
+    // rally: a heart just lost stays as a ghost for a moment; hitting back fills it and returns it
+    if (P.rally > 0 && P.pbleedT <= 0) {
       const eff = s.rallyEff * (reso('blood', 1) && e.bleed > 0 ? 2 : 1) * (counter ? 2 : 1);
-      const heal = Math.min(P.rally, d * eff) * s.healMul;
-      if (heal > 0) { P.hp = Math.min(s.maxHp, P.hp + heal); P.rally -= heal; P.rallyGlow = 0.25; }
+      P.rallyProg += (d * eff) / (15 * floorScale());
+      P.rallyGlow = 0.2;
+      if (P.rallyProg >= 1) { P.rallyProg = 0; P.rally--; P.hp = Math.min(s.maxHp, P.hp + 1); text(P.x, P.y - 30, 'сердце возвращено', '#ff5a6a', true); ring(P.x, P.y - 6, 3, 22, 0.4, '#ff5a6a', 2); sfx.flask(); }
     }
     if (!o.noProc && !blocked) procs(e, d, crit, o);
   } else {
@@ -226,8 +227,9 @@ export function killEnemy(e, o = {}) {
   if (e.bleed > 0 && lv('b_heads')) { G.run.heads = Math.min(10, (G.run.heads || 0) + 1); text(P.x, P.y - 30, 'голова +' + G.run.heads, '#7bd66b'); }
   if (P.s.leg.w_pelekys && P.wk === 'pelekys') P.sta = Math.min(P.s.maxSta, P.sta + 25);
   if (P.s.leg.r_ring) P.invisT = Math.max(P.invisT, 1);
-  const kh = (lv('b_sacr') ? 2 + 2 * lv('b_sacr') : 0) + P.s.killHeal + (P.s.roots.hunger ? P.s.maxHp * 0.03 : 0);
-  if (kh) P.hp = Math.min(P.s.maxHp, P.hp + kh * P.s.healMul);
+  // kill heals are rare: "every Nth kill restores a heart"
+  const kr = (lv('b_sacr') ? 1 / [0, 15, 12, 9][lv('b_sacr')] : 0) + P.s.killHeal + (P.s.roots.hunger ? 1 / 12 : 0);
+  if (kr) { P.killAcc = (P.killAcc || 0) + kr; if (P.killAcc >= 1) { P.killAcc -= 1; healHearts(1, true); } }
   if (e.burn > 0 && lv('f_pyre')) later(0.05, () => nova(e.x, e.y, 36, (10 + 10 * lv('f_pyre')) * ds, 'fire', '#ff8f3a', e));
   if (e.bleed > 0 && reso('blood', 2)) later(0.05, () => { ring(e.x, e.y, 2, 50, 0.4, '#e0404f', 2); for (const x of G.enemies) if (!x.dead && dist(x.x, x.y, e.x, e.y) < 50) { x.bleed = Math.min(10, x.bleed + 5); x.bleedT = 4; } });
   if (e.freezeKill || (e.freeze > 0 && reso('frost', 1))) shards(e.x, e.y, 6, 8 * ds);
@@ -292,9 +294,11 @@ export function hurtPlayer(dmg, sx, sy, o = {}) {
       } else pr.life = 0;
       return false;
     }
-    P.sta = Math.max(0, P.sta - 10); P.staDelay = 0.6;
-    dmg *= 0.35; o.noStagger = true; o.status = null;
+    // a heavy blow breaks through the guard and the stamina; a normal one is simply stopped
+    P.sta = Math.max(0, P.sta - 22); P.staDelay = 0.7;
     text(P.x, P.y - 24, 'блок', '#f0d9a0');
+    if (dmg / floorScale() < 24 || P.sta > 0) { P.inv = 0.25; return false; }
+    o.hearts = 1; o.noStagger = true; o.status = null;
   }
   if (G.godmode) { P.inv = 0.5; G.run.hitsTaken++; return false; }
   // Aegis of Athena: the first blow in a hall is turned to stone
@@ -306,20 +310,27 @@ export function hurtPlayer(dmg, sx, sy, o = {}) {
     return false;
   }
   if (P.arcaneUp) { P.arcaneUp = false; ring(P.x, P.y - 6, 4, 22, 0.4, '#8f7a63', 2); text(P.x, P.y - 22, 'кора', '#b8aa90'); sfx.block(); P.inv = 0.4; return false; }
-  dmg = dmg * s.dmgTaken * (P.hyperNow ? 1 - s.hyperArmor : 1);
-  if (s.leg.c_light && dist(sx, sy, P.x, P.y) < 40) dmg *= 0.7; // Nemean lion hide
-  if (P.frostShield > 0) { const ab = Math.min(P.frostShield, dmg); P.frostShield -= ab; dmg -= ab; burst(P.x, P.y - 6, 6, '#93e2ff', 50); if (dmg <= 0.5) { P.inv = 0.3; return false; } }
-  dmg = Math.max(1, Math.round(dmg));
-  P.hp -= dmg;
-  P.rally = Math.min(dmg * 0.9 + P.rally * 0.5, s.maxHp); P.rallyT = s.rallyTime;
-  G.run.roomHits = (G.run.roomHits || 0) + 1;
+  // HEARTS: a blow costs one heart, a heavy one (boss slams, explosions) two. Ice and bronze shields take it first.
+  let hearts = o.hearts ?? (dmg / floorScale() >= 24 ? 2 : 1);
+  P.wardT = 0;
+  if (P.frostShield > 0) {
+    P.frostShield--; hearts--; burst(P.x, P.y - 6, 10, '#93e2ff', 60); text(P.x, P.y - 22, 'лёд', '#93e2ff', true); sfx.block();
+    if (hearts <= 0) { P.inv = 0.6; return false; }
+  }
+  let warded = 0;
+  while (hearts > 0 && P.ward > 0) { P.ward--; hearts--; warded++; }
+  if (warded) { burst(P.x, P.y - 6, 12, '#c8924a', 80); ring(P.x, P.y - 6, 3, 18, 0.3, '#f0d9a0', 2); text(P.x, P.y - 22, 'щит', '#f0d9a0', true); sfx.block(); }
   G.run.hitsTaken++;
-  P.inv = 0.5;
+  if (hearts <= 0) { P.inv = 0.8; P.flash = 0.08; shake(0.2); hitstop(0.05); if (o.status && o.status.kind !== 'burn') applyStatus(P, o.status); return true; }
+  P.hp -= hearts;
+  P.rally = Math.min(hearts, 1) + (P.rallyT > 0 ? P.rally : 0); P.rallyT = s.rallyTime; P.rallyProg = 0;
+  G.run.roomHits = (G.run.roomHits || 0) + 1;
+  P.inv = 1.0;
   P.flash = 0.12;
-  if (lv('i_armor') && (P.frostCd || 0) <= 0) { P.frostShield = 5 + 5 * lv('i_armor'); P.frostCd = 8; }
-  G.vign = Math.min(1, G.vign + 0.6);
-  text(P.x, P.y - 20, dmg, '#e0404f', true);
-  burst(P.x, P.y - 6, 8, '#e0404f', 70, { grav: 60 });
+  if (lv('i_armor') && (P.frostCd || 0) <= 0) { P.frostShield = 1; P.frostCd = 14 - 2 * lv('i_armor'); }
+  G.vign = Math.min(1, G.vign + 0.8);
+  text(P.x, P.y - 20, hearts > 1 ? '−2 ♥' : '−♥', '#ff5a6a', true);
+  burst(P.x, P.y - 6, 10, '#e0404f', 80, { grav: 60 });
   sfx.hurt(); shake(0.35); hitstop(0.08);
   if (!P.hyperNow && !o.noStagger) {
     const a = angTo(sx, sy, P.x, P.y);
@@ -328,8 +339,8 @@ export function hurtPlayer(dmg, sx, sy, o = {}) {
   }
   if (o.status && P.hp > 0) applyStatus(P, o.status);
   // Phoenix feather: once per depth, bursting back to life below 20%
-  if (lv('f_phoenix') && P.hp > 0 && P.hp < s.maxHp * 0.2 && G.run.phoenixFloor !== G.run.floor) {
-    G.run.phoenixFloor = G.run.floor; P.hp += s.maxHp * 0.35; P.inv = 1;
+  if (lv('f_phoenix') && P.hp > 0 && P.hp <= 1 && G.run.phoenixFloor !== G.run.floor) {
+    G.run.phoenixFloor = G.run.floor; P.hp = Math.min(s.maxHp, P.hp + 2); P.inv = 1.5;
     banner('ПЕРО ФЕНИКСА', '', '#ff8f3a', 1.2); nova(P.x, P.y, 70, 40 * dotScale(), 'fire', '#ff8f3a');
     for (const e of G.enemies) if (!e.dead && dist(P.x, P.y, e.x, e.y) < 70) ignite(e);
   }
@@ -342,7 +353,16 @@ export function hurtPlayer(dmg, sx, sy, o = {}) {
 }
 
 // statuses enemies inflict on the hero (immunities from divine armour / Ares' rage)
-const STATUS_NAME = { stun: 'ОГЛУШЁН', slow: 'ЗАМЕДЛЕН', bleed: 'КРОВОТЕЧЕНИЕ', burn: 'ГОРИШЬ' };
+const STATUS_NAME = { stun: 'ОГЛУШЁН', slow: 'ЗАМЕДЛЕН', bleed: 'РАНА: НЕ ЛЕЧИТСЯ', burn: 'ОГОНЬ: ЩИТЫ ПЛАВЯТСЯ' };
+// heal in hearts (fractions fill a heart partially); bleeding blocks healing
+export function healHearts(h, show = false) {
+  const P = G.player;
+  if (!P || P.dead || P.pbleedT > 0) return;
+  const before = P.hp;
+  P.hp = Math.min(P.s.maxHp, P.hp + h * P.s.healMul);
+  if (show && P.hp > before) { text(P.x, P.y - 28, '+♥', '#ff5a6a', true); ring(P.x, P.y - 6, 3, 18, 0.35, '#ff5a6a', 2); }
+}
+
 export function applyStatus(P, st) {
   const s = P.s, t = st.t;
   if (st.kind === 'stun') {
@@ -350,7 +370,7 @@ export function applyStatus(P, st) {
     P.setState('stun'); P.stunT = t; P.vx *= 0.3; P.vy *= 0.3;
   } else if (st.kind === 'slow') { if (s.slowImm) return; if (P.slowT > 0.2) { P.slowT = Math.max(P.slowT, t); return; } P.slowT = t; }
   else if (st.kind === 'bleed') { const had = P.pbleedT > 0; P.pbleedT = Math.max(P.pbleedT, t); if (had) return; }
-  else if (st.kind === 'burn') { if (s.burnImm) return; const had = P.pburnT > 0; P.pburnT = Math.max(P.pburnT, t); if (had) return; }
+  else if (st.kind === 'burn') { if (s.burnImm) return; const had = P.pburnT > 0; P.pburnT = Math.max(P.pburnT, t); if (P.ward > 0) { P.ward--; text(P.x, P.y - 40, 'щит расплавлен', '#ff8f3a'); } if (had) return; }
   text(P.x, P.y - 32, STATUS_NAME[st.kind], { stun: '#ffd36b', slow: '#93e2ff', bleed: '#e0404f', burn: '#ff8f3a' }[st.kind], true);
 }
 

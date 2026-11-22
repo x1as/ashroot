@@ -146,10 +146,10 @@ export function renderPanel() {
       <h2>${weapon ? weapon.name + (weapon.up ? ' +' + weapon.up : '') : 'Без оружия'}</h2>
       <p class="tag">${W.name} · ${W.tagline}</p>
       <dl class="stats">
-        <div><dt>HP</dt><dd>${s.maxHp}</dd></div>
+        <div><dt>Сердца</dt><dd>${s.maxHp}</dd></div>
         <div><dt>Выносл.</dt><dd>${s.maxSta}</dd></div>
         <div><dt>Урон/с</dt><dd>${(rawDps(W) * s.dmgMul).toFixed(0)}</dd></div>
-        <div><dt>Броня</dt><dd>${Math.round(s.armor)}</dd></div>
+        <div><dt>Щиты</dt><dd>${s.ward}</dd></div>
       </dl>
       <p class="skill"><b>Усиленная атака: ${W.power.name}.</b> ${W.power.desc}</p>
       <p class="mu">Нагрузка ${Math.round(s.load)}/${Math.round(s.loadCap)} · перекат: <b>${ROLL[s.roll].name.toLowerCase()}</b><br>

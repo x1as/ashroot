@@ -49,6 +49,7 @@ export function recompute() {
   r.aspects = asp;
   if (P.s.maxHp > oldMax) P.hp += P.s.maxHp - oldMax;
   P.hp = Math.min(P.hp, P.s.maxHp);
+  P.ward = Math.min(P.s.ward, P.ward + Math.max(0, P.s.ward - (P.wardMax ?? P.s.ward))); P.wardMax = P.s.ward;
   P.sta = Math.min(P.sta, P.s.maxSta);
 }
 
@@ -111,6 +112,7 @@ export function enterRoom(idx) {
   for (const c of P.cloth) { c.x = c.px = P.x; c.y = c.py = P.y - 8; }
   G.cam.x = P.x; G.cam.y = P.y - 30;
   r.roomHits = 0; r.aegisUsed = false; r.heads = 0;
+  if (G.player) { G.player.ward = G.player.s.ward; G.player.wardT = 0; }
   R.state = { waves: [], wave: -1, t: 0, cleared: false, rewardShown: false, timer: 0 };
   if (plan.id === 'boss') {
     const b = createBoss(F.boss, R.w * TS / 2, 6 * TS);
@@ -212,10 +214,11 @@ export function onBossDeath(b) {
   banner(r.floor === 5 ? 'ТРИНАДЦАТЫЙ ПОДВИГ' : 'ПОДВИГ СОВЕРШЁН', b.def.myth || b.def.name, b.def.color, 3.4);
   // bank everything: the boss is the souls-like checkpoint
   emit('bossKill', { id: b.type, floor: r.floor, time: r.time, hitsTaken: G.run.roomHits || 0, weapon: r.wk });
+  r.ash = Math.round(r.ash);
   G.save.ash += r.ash; G.save.stats.ashEarned += r.ash; r.banked += r.ash; r.ash = 0;
   G.save.stats.bestFloor = Math.max(G.save.stats.bestFloor, r.floor);
   writeSave(G.save);
-  P.flasks = P.s.flasks; P.hp = Math.min(P.s.maxHp, P.hp + P.s.maxHp * 0.3);
+  P.flasks = P.s.flasks; P.hp = Math.min(P.s.maxHp, P.hp + 2); // a boss down: nectar refilled, +2 hearts
   r.unstoppableUsed = false;
   G.boss = null;
   const R = G.room;
@@ -244,6 +247,7 @@ export function onPlayerDeath() {
   const r = G.run, save = G.save;
   slowmo(1.5, 0.15); sfx.death(); shake(0.6);
   // half the unbanked ash settles into the tree, half becomes your echo on this floor
+  r.ash = Math.round(r.ash);
   const keep = Math.floor(r.ash * G.player.s.deathKeep);
   save.ash += keep;
   save.echo = r.ash - keep > 0 ? { floor: r.floor, ash: r.ash - keep } : save.echo;

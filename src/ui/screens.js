@@ -45,6 +45,7 @@ function cardHTML(b, i) {
   </button>`;
 }
 
+const fmtH = (h) => (Math.round(h * 4) / 4).toString().replace('.', ',');
 export const ui = {
   showCards({ title, offer, canRest, picksLeft, onDone }) {
     const P = G.player, r = G.run;
@@ -55,7 +56,7 @@ export const ui = {
       $('cards-list').style.setProperty('--n', list.length);
       const rest = $('btn-rest'), reroll = $('btn-reroll');
       rest.hidden = !canRest;
-      rest.textContent = `Отдохнуть вместо дара: +35% HP (${Math.ceil(P.hp)}/${P.s.maxHp})`;
+      rest.textContent = `Отдохнуть вместо дара: +2 сердца (сейчас ${fmtH(P.hp)} из ${P.s.maxHp})`;
       reroll.hidden = r.rerolls <= 0;
       reroll.textContent = `Перебросить (${r.rerolls})`;
       for (const el of $('cards-list').querySelectorAll('.card')) el.onclick = () => choose(list[+el.dataset.i]);
@@ -70,7 +71,7 @@ export const ui = {
       if (left > 0) { current = rollOffer(P.s.cards); render(current); return; }
       finish();
     };
-    $('btn-rest').onclick = () => { P.hp = Math.min(P.s.maxHp, P.hp + P.s.maxHp * 0.35); sfx.flask(); text(P.x, P.y - 26, 'отдых', '#b4ec5f', true); left--; if (left > 0) { current = rollOffer(P.s.cards); render(current); } else finish(); };
+    $('btn-rest').onclick = () => { P.hp = Math.min(P.s.maxHp, P.hp + 2); sfx.flask(); text(P.x, P.y - 26, 'отдых', '#b4ec5f', true); left--; if (left > 0) { current = rollOffer(P.s.cards); render(current); } else finish(); };
     $('btn-reroll').onclick = () => { if (r.rerolls <= 0) return; r.rerolls--; sfx.ui(); current = rollOffer(P.s.cards); render(current); };
     render(current);
     openOverlay('cards');
@@ -83,15 +84,15 @@ export const ui = {
     openOverlay('bonfire');
     const done = () => { closeOverlay('bonfire'); { openExits(G.room); sfx.door(); } };
     $('bf-rest').onclick = () => {
-      P.hp = Math.min(P.s.maxHp, P.hp + P.s.maxHp * 0.5); P.flasks = Math.min(P.s.flasks, P.flasks + 1);
-      sfx.flask(); text(P.x, P.y - 26, '+50% HP, +1 нектар', '#b4ec5f', true); done();
+      P.hp = Math.min(P.s.maxHp, P.hp + 3); P.flasks = Math.min(P.s.flasks, P.flasks + 1);
+      sfx.flask(); text(P.x, P.y - 26, '+3 ♥, +1 нектар', '#b4ec5f', true); done();
     };
     $('bf-forge').onclick = () => { $('bonfire').hidden = true; showGear({ forge: true, tab: 'forge', onClose: () => { $('bonfire').hidden = false; G.paused = true; document.body.classList.add('overlay'); } }); };
     $('bf-sac').onclick = () => {
       closeOverlay('bonfire');
       ui.showCards({ title: 'Жертва: дар без отдыха', offer: rollOffer(P.s.cards + 1), canRest: false, picksLeft: 1, onDone: () => { openExits(G.room); sfx.door(); } });
     };
-    $('bf-hp').textContent = `${Math.ceil(P.hp)} / ${P.s.maxHp} HP · фляги ${P.flasks}/${P.s.flasks}`;
+    $('bf-hp').textContent = `Сердца ${fmtH(P.hp)} из ${P.s.maxHp} · нектар ${P.flasks} из ${P.s.flasks}`;
     bindKeys((e) => { if (e.code === 'Digit1') $('bf-rest').click(); if (e.code === 'Digit2') $('bf-sac').click(); });
   },
 

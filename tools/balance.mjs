@@ -110,20 +110,25 @@ for (const label of ['EXPECTED', 'FRESH']) {
       console.log(line(cells));
     }
   }
-  console.log(`\n=== ${label} hero: hits to die (enemy hit = exact dmg, no RNG) ===`);
+  // HEARTS: each blow = 1 heart (heavy = 2); bronze shields (armour) take blows first and come back.
+  console.log(`\n=== ${label} hero: blows to die per room (hearts + shields; shields refill each room) ===`);
   console.log(line(['depth', ...CLASS_ORDER]));
   for (const f of [1, 2, 3, 4, 5]) {
-    const avgDmg = Object.values(ENEMIES).reduce((a, e) => a + e.dmg, 0) / Object.keys(ENEMIES).length * SCALE.dmg(f);
-    const cells = [`d${f} avg ${avgDmg.toFixed(1)}`];
-    let sum = 0;
+    const cells = [`d${f}`];
     for (const cls of CLASS_ORDER) {
-      const s2 = st(cls, f);
-      const htd = (s2.maxHp + 8 * (f - 1)) / (avgDmg * s2.dmgTaken);
-      sum += htd;
-      cells.push(htd.toFixed(1) + (label === 'EXPECTED' ? flag(htd >= TARGET.htd[0] && htd <= TARGET.htd[1], `${label} d${f} ${cls}: ${htd.toFixed(1)} hits to die`) : ''));
+      const s2 = st(cls, f), htd = s2.maxHp + s2.ward;
+      cells.push(`${s2.maxHp}+${s2.ward}` + (label === 'EXPECTED' ? flag(htd >= 5 && htd <= 9, `${label} d${f} ${cls}: ${htd} blows to die`) : ''));
     }
-    if (label === 'FRESH' && f >= 3) flag(sum / CLASS_ORDER.length < (f === 3 ? 4.6 : 4.2), `fresh hero not gated at depth ${f}: ${(sum / CLASS_ORDER.length).toFixed(1)} hits to die`);
     console.log(line(cells));
+  }
+  if (label === 'FRESH') {
+    // the gate: without growing, deep enemies take far longer to kill (= far more blows to dodge)
+    for (const f of [3, 5]) {
+      let rf = 0, n = 0;
+      for (const cls of CLASS_ORDER) for (const e of Object.values(ENEMIES)) { rf += dpsVs(cls, e, f, expected(cls, f), PICKS(f)) / dpsVs(cls, e, f, computeStats(cls), PICKS(f)); n++; }
+      const ratio = rf / n;
+      console.log(`fresh hero at depth ${f} kills ${ratio.toFixed(2)}x slower than the expected hero` + flag(ratio >= (f === 3 ? 1.6 : 2.4), `fresh hero not gated at depth ${f} (${ratio.toFixed(2)}x)`));
+    }
   }
   if (label === 'FRESH') continue;
   console.log(`\n=== ${label} hero: boss fight length, seconds ===`);

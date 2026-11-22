@@ -8,7 +8,7 @@ import { ELEMENT_ACCENT } from '../art/bank.js';
 import { input } from '../engine/input.js';
 import { damp, angTo, angDiff, dist, clamp, lerp, ease, TAU, rand } from '../engine/util.js';
 import { drawSprite, rp, pcircle } from '../engine/sprite.js';
-import { burst, smear, ring, shake, text, kick, part, flash } from '../engine/fx.js';
+import { burst, smear, ring, shake, text, kick, part, flash, beam, cone, slam } from '../engine/fx.js';
 import { sfx } from '../engine/audio.js';
 import { SPR, heroFrames } from '../art/bank.js';
 import { collide, moveCollide, tileAt, T, TS, spikeState, solidT } from './world.js';
@@ -43,7 +43,7 @@ export function applyLoadout(P, stats, look) {
 export function createPlayer(stats, look, x, y) {
   const P = {
     s: stats, x, y, vx: 0, vy: 0, r: 4,
-    hp: stats.maxHp, sta: stats.maxSta, staDelay: 0, rally: 0, rallyT: 0, rallyGlow: 0,
+    hp: stats.maxHp, sta: stats.maxSta, staDelay: 0, rally: 0, rallyT: 0, rallyGlow: 0, rallyProg: 0, ward: stats.ward, wardT: 0,
     state: 'move', st: 0, face: -Math.PI / 2, faceX: 1, flipS: 1,
     combo: 0, comboWin: 0, struck: false, atk: null, phase: 'wind',
     dodge: { dx: 0, dy: 1 }, dodgeAge: 0, iframe: 0, inv: 0, perfectDone: false,
@@ -61,7 +61,7 @@ export function createPlayer(stats, look, x, y) {
 const atkRate = (P) => {
   let r = P.s.atkSpeed;
   if (P.rageT > 0) r *= 1.4;
-  if (P.s.leg.c_medium && P.hp < P.s.maxHp * 0.5) r *= 1.25;
+  if (P.s.leg.c_medium && P.hp <= 2) r *= 1.25;
   if (P.s.roots.rage && P.hp < P.s.maxHp * 0.4) r *= 1.25;
   return r;
 };
@@ -98,7 +98,9 @@ export function updatePlayer(P, dt) {
   if (P.aura) auraFx(P, dt);
   // stamina & rally
   if (P.staDelay > 0) P.staDelay -= dt; else P.sta = Math.min(s.maxSta, P.sta + s.staRegen * dt * (P.state === 'move' ? 1 : 0.4));
-  if (P.rallyT > 0) P.rallyT -= dt; else P.rally = Math.max(0, P.rally - 30 * dt);
+  if (P.rallyT > 0) P.rallyT -= dt; else { P.rally = 0; P.rallyProg = 0; }
+  // bronze shields come back one by one after a quiet moment (fire stops them)
+  if (P.ward < s.ward && P.pburnT <= 0) { P.wardT += dt; if (P.wardT >= s.wardTime) { P.wardT = 0; P.ward++; ring(P.x, P.y - 6, 2, 14, 0.3, '#f0d9a0', 1); } } else if (P.ward >= s.ward) P.wardT = 0;
   // aim
   const mouseAim = !input.touch && input.mouse.inside;
   const aimWanted = mouseAim ? angTo(P.x, P.y - 5, G.mouseWorld.x, G.mouseWorld.y) : autoAim(P);
@@ -172,10 +174,10 @@ export function updatePlayer(P, dt) {
       P.vx = damp(P.vx, mx * speed * 0.35, 12, dt); P.vy = damp(P.vy, my * speed * 0.35, 12, dt);
       if (Math.random() < dt * 30) part({ x: P.x + rand(-5, 5), y: P.y - rand(0, 12), vx: 0, vy: -20, life: 0.5, color: '#93e2ff', size: 1, drag: 1 });
       if (P.st >= 0.85) {
-        const heal = s.maxHp * s.flaskHeal * s.healMul;
+        const heal = Math.round(s.maxHp * s.flaskHeal * s.healMul * 2) / 2; // nectar heals whole / half hearts
         if (s.roots.sap) { P.sapT = 6; text(P.x, P.y - 34, 'живица: +30% урона', '#ffb347'); }
         P.hp = Math.min(s.maxHp, P.hp + heal); P.rally = 0;
-        text(P.x, P.y - 24, '+' + Math.round(heal), '#b4ec5f', true); ring(P.x, P.y - 6, 3, 20, 0.4, '#b4ec5f');
+        text(P.x, P.y - 24, '+' + heal + ' ♥', '#b4ec5f', true); ring(P.x, P.y - 6, 3, 20, 0.4, '#b4ec5f');
         sfx.flask(); P.setState('move');
       }
       break;
@@ -189,8 +191,7 @@ export function updatePlayer(P, dt) {
       P.vx = 0; P.vy = 0;
       if (P.st > 0.55) {
         P.x = P.lastSafe.x; P.y = P.lastSafe.y; P.setState('move'); P.inv = 1.0;
-        const d = Math.max(8, Math.round(P.s.maxHp * 0.12));
-        P.inv = 0; hurtPlayer(d, P.x, P.y + 1, { noStagger: true }); P.inv = 1.0;
+        P.inv = 0; hurtPlayer(1, P.x, P.y + 1, { noStagger: true, hearts: 1, noBlock: true }); P.inv = 1.0;
       }
       return;
     }
@@ -221,18 +222,11 @@ export function updatePlayer(P, dt) {
   P.afterimg = P.afterimg.filter((a) => a.t < 0.25);
 }
 
-// statuses enemies put on the hero: bleed / burn tick (never kill: they leave 1 HP), slow, stun
+// statuses enemies put on the hero: bleed (no healing, no rally), burn (melts a shield, stops shield regen), slow, stun
 function tickPlayerStatus(P, dt) {
   if (P.pbleedT <= 0 && P.pburnT <= 0) return;
   P.pbleedT = Math.max(0, P.pbleedT - dt); P.pburnT = Math.max(0, P.pburnT - dt);
-  P.dotT += dt;
   if (Math.random() < dt * 10) part({ x: P.x + rand(-3, 3), y: P.y - rand(4, 12), vx: 0, vy: P.pburnT > 0 ? -25 : 20, life: 0.4, color: P.pburnT > 0 ? '#ff8f3a' : '#e0404f', size: 1, drag: 1, grav: P.pburnT > 0 ? 0 : 60, glow: P.pburnT > 0 });
-  if (P.dotT < 0.5) return;
-  P.dotT -= 0.5;
-  const d = Math.max(1, Math.round(((P.pbleedT > 0 ? 2 : 0) + (P.pburnT > 0 ? 3 : 0)) * floorScale()));
-  if (G.godmode) return;
-  P.hp = Math.max(1, P.hp - d); P.rally = Math.min(P.s.maxHp, P.rally + d * 0.6); P.rallyT = P.s.rallyTime;
-  text(P.x + rand(-4, 4), P.y - 22, d, P.pburnT > 0 ? '#ff8f3a' : '#e0404f');
 }
 function auraFx(P, dt) {
   const A = P.aura, rate = Math.min(1, A.l / 5) * 22 + 4;
@@ -246,7 +240,7 @@ function auraFx(P, dt) {
 }
 
 function useSta(P, n) {
-  if (P.s.staFree && n < 30 && P.state !== 'dodge') { P.hp = Math.max(1, P.hp - P.s.hpCost); P.rally += P.s.hpCost; P.rallyT = P.s.rallyTime; return true; }
+  if (P.s.staFree && n < 30 && P.state !== 'dodge') { P.hp = Math.max(0.25, P.hp - P.s.hpCost / 20); return true; }
   if (P.sta <= 0) return false;
   P.sta -= n; P.staDelay = 0.55;
   return true;
@@ -336,39 +330,40 @@ function updateAttack(P, dt) {
 function strike(P) {
   const a = P.atk, s = P.s;
   if (a.kind === 'bolt') { fireBolt(P); return; }
-  const wk = P.wk, style = P.C.style;
-  const r = (a.range + (wk === 'spear' && s.leg.w_spear ? 10 : 0)) * s.reach;
-  const arcW = (lv('c_wide') && wk === 'sword' ? 0.35 : 0) + (a.arc < 360 ? (s.reach - 1) * 0.5 : 0);
+  const wk = P.wk, shape = shapeOf(a);
+  const r = (a.range + (wk === 'spear' && s.leg.w_spear && shape === 'line' ? 10 : 0)) * s.reach;
+  const arcW = (lv('c_wide') && wk === 'sword' ? 0.35 : 0) + (shape === 'arc' ? (s.reach - 1) * 0.5 : 0);
   const half = (a.arc * Math.PI) / 360 + arcW;
   const heavy = !!a.hyper;
   const metal = METAL[P.wr], col = P.auraCol;
-  swingFx(P, style, a, r, half, metal, col, heavy);
-  sfx.swing(heavy || style === 'axe');
+  swingFx(P, shape, a, r, half, metal, col, heavy);
+  sfx.swing(heavy || shape === 'spin' || shape === 'impact');
   const o = { type: P.C.dmgType, knock: heavy ? 90 : 35, heavy, shieldBreak: P.C.guardBreak && heavy, poiseMul: a.finisher ? 1.5 : 1, melee: true };
   if (P.C.execute) o.execute = P.C.execute + (lv('c_execute') ? 0.15 : 0) + (s.leg.w_pelekys ? 0.1 : 0);
   if (a.bash) { o.stun = 0.9; o.knock = 140; o.shieldBreak = true; }
+  if (shape === 'impact') { o.knock = 120; o.poiseMul *= 1.4; }
+  if (shape === 'line') o.shieldBreak = o.shieldBreak || a.finisher; // a lunge drives through a guard
   if (wk === 'cleaver' && lv('c_titan')) o.stun = 0.5;
   if (wk === 'spear' && s.leg.w_spear) o.shieldBreak = true;
   if (wk === 'labrys' && a.spin && lv('c_labrys')) o.venom = 3;
-  const victims = targetsIn(P, a, r, half, style);
+  const victims = targetsIn(P, a, r, half);
   for (const e of victims) {
-    slashMark(e.x, e.y - 6, P.face + Math.PI / 2 + rand(-0.4, 0.4), heavy ? 9 : 6);
-    hitEnemy(e, a.dmg, o);
-    if (wk === 'spear' && lv('c_phalanx')) later(0.09, () => { if (!e.dead) { slashMark(e.x, e.y - 5, P.face + Math.PI / 2, 5); hitEnemy(e, a.dmg * 0.6, { type: 'pierce', knock: 15, noProc: true }); } });
+    slashMark(e.x, e.y - 6, shape === 'line' || shape === 'cone' ? P.face + rand(-0.15, 0.15) : P.face + Math.PI / 2 + rand(-0.4, 0.4), heavy ? 9 : 6);
+    hitEnemy(e, a.dmg, { ...o, fx: shape === 'impact' ? impactAt(P, a).x : undefined, fy: shape === 'impact' ? impactAt(P, a).y : undefined });
+    if (wk === 'spear' && lv('c_phalanx')) later(0.09, () => { if (!e.dead) { slashMark(e.x, e.y - 5, P.face, 5); hitEnemy(e, a.dmg * 0.6, { type: 'pierce', knock: 15, noProc: true }); } });
     if (wk === 'labrys' && a.spin && lv('c_labrys') && !e.isBoss) { const ang = angTo(e.x, e.y, P.x, P.y); e.kx += Math.cos(ang) * 160; e.ky += Math.sin(ang) * 160; }
   }
   for (const pr of G.room.props || []) {
-    if (pr.dead || dist(P.x, P.y - 4, pr.x, pr.y - 4) > r + pr.r) continue;
-    if (a.arc < 360 && Math.abs(angDiff(P.face, angTo(P.x, P.y - 4, pr.x, pr.y - 4))) > half + 0.2) continue;
-    hitProp(pr);
+    if (pr.dead || dist(P.x, P.y - 4, pr.x, pr.y - 4) > r + pr.r + 10) continue;
+    if (inShape(P, a, shape, r, half, pr.x, pr.y, pr.r)) hitProp(pr);
   }
-  if (victims.length && heavy) shake(style === 'cleave' ? 0.35 : 0.2);
+  if (victims.length && heavy) shake(shape === 'impact' ? 0.4 : 0.2);
   kick(Math.cos(P.face), Math.sin(P.face), heavy ? 2.5 : 1);
   // Nyx's shadow double repeats every third swing
   if (lv('h_twin') && ++P.twinN % 3 === 0) later(0.13, () => {
     if (P.dead) return;
-    smear(P.x, P.y - 5, P.face - half, P.face + half, r * 0.5, r + 2, 0.22, '#b88cff');
-    for (const e of targetsIn(P, a, r, half, style)) hitEnemy(e, a.dmg * (0.4 + 0.3 * lv('h_twin')), { type: 'shadow', knock: 10, noProc: true });
+    swingFx(P, shape, a, r, half, '#4a2f7a', '#b88cff', false);
+    for (const e of targetsIn(P, a, r, half)) hitEnemy(e, a.dmg * (0.4 + 0.3 * lv('h_twin')), { type: 'shadow', knock: 10, noProc: true });
   });
   if (a.finisher) {
     const wave = (dmg, w = 170, c = col) => G.projs.push({ owner: 'player', kind: 'wave', x: P.x, y: P.y - 3, vx: Math.cos(P.face) * w, vy: Math.sin(P.face) * w, r: 8, dmg: dmg * s.dmgMul, type: 'slash', life: 0.6, pierce: 99, hit: new Set(), color: c, noProc: true, knock: 60 });
@@ -379,70 +374,73 @@ function strike(P) {
   }
 }
 
-// who a swing touches: arcs test angle, thrusts test a narrow line along the facing
-function targetsIn(P, a, r, half, style) {
-  const out = [], cx = Math.cos(P.face), cy = Math.sin(P.face);
-  for (const e of G.enemies) {
-    if (e.dead || e.spawnT > 0) continue;
-    const dx = e.x - P.x, dy = e.y - P.y;
-    if (style === 'thrust') {
-      const along = dx * cx + dy * cy, across = Math.abs(dx * cy - dy * cx);
-      if (along < -2 || along > r + e.r || across > e.r + 5 + (a.finisher ? 3 : 0)) continue;
-    } else {
-      if (Math.hypot(dx, dy) > r + e.r) continue;
-      if (a.arc < 360 && Math.abs(angDiff(P.face, Math.atan2(dy, dx))) > half + 0.2) continue;
-    }
-    out.push(e);
+// every swing has a SHAPE (and the hitbox is exactly that shape):
+//   arc — crescent sweep    line — a lunge / thrust: a narrow beam straight ahead    cone — a short stab wedge
+//   impact — overhead blow landing on a spot ahead    cross — two blades crossing in an X    spin — full circle
+const shapeOf = (a) => a.shape || (a.arc >= 360 ? 'spin' : 'arc');
+const impactAt = (P, a) => ({ x: P.x + Math.cos(P.face) * a.range * P.s.reach, y: P.y + Math.sin(P.face) * a.range * P.s.reach });
+function inShape(P, a, shape, r, half, x, y, er) {
+  const cx = Math.cos(P.face), cy = Math.sin(P.face), dx = x - P.x, dy = y - P.y;
+  const along = dx * cx + dy * cy, across = Math.abs(dx * cy - dy * cx);
+  if (shape === 'line') return along > -2 && along < r + er && across < (a.width || 8) / 2 + er;
+  if (shape === 'cross') {
+    for (const off of [0.55, -0.55]) { const c2 = Math.cos(P.face + off), s2 = Math.sin(P.face + off); const al = dx * c2 + dy * s2, ac = Math.abs(dx * s2 - dy * c2); if (al > -2 && al < r + er && ac < (a.width || 6) / 2 + er) return true; }
+    return false;
   }
+  if (shape === 'impact') { const c = impactAt(P, a); return dist(x, y, c.x, c.y) < (a.r || 20) * P.s.reach + er; }
+  const d = Math.hypot(dx, dy);
+  if (d > r + er) return false;
+  if (shape === 'spin') return true;
+  return Math.abs(angDiff(P.face, Math.atan2(dy, dx))) < half + (shape === 'cone' ? 0.1 : 0.2);
+}
+function targetsIn(P, a, r, half) {
+  const shape = shapeOf(a), out = [];
+  for (const e of G.enemies) if (!e.dead && e.spawnT <= 0 && inShape(P, a, shape, r, half, e.x, e.y, e.r)) out.push(e);
   return out;
 }
 
-// every weapon type has its own swing silhouette
-function swingFx(P, style, a, r, half, metal, col, heavy) {
-  const x = P.x, y = P.y - 5, f = P.face;
-  if (style === 'twin') {
-    smear(x, y, f - half, f + half, r * 0.78, r + 2, 0.13, metal);
-    smear(x, y, f - half * 0.8, f + half * 0.8, r * 0.88, r, 0.1, col);
-    if (a.finisher) { smear(x, y, f + 0.7 - 0.8, f + 0.7 + 0.8, r * 0.6, r + 6, 0.22, '#ffffff'); smear(x, y, f - 0.7 - 0.8, f - 0.7 + 0.8, r * 0.6, r + 6, 0.22, col); }
-  } else if (style === 'smash') {
-    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.25, r + 4, 0.3, '#8a7c68');
-    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.45, r, 0.2, metal);
-    const tx = P.x + Math.cos(f) * r * 0.85, ty = P.y + Math.sin(f) * r * 0.85;
-    ring(tx, ty, 2, 16 + (a.finisher ? 14 : 0), 0.35, '#b8aa90', 2); burst(tx, ty, a.finisher ? 26 : 14, '#8a7c68', 90, { grav: 90, size: 2 });
-  } else if (style === 'thrust') {
-    // dory: a long narrow lance of light along the facing, a flash at the point
-    smear(x, y, f - 0.07, f + 0.07, 6, r + 4, 0.16, col);
-    smear(x, y, f - 0.035, f + 0.035, 10, r + 6, 0.12, '#ffffff');
-    const tx = P.x + Math.cos(f) * (r + 4), ty = y + Math.sin(f) * (r + 4);
-    ring(tx, ty, 1, a.finisher ? 12 : 7, 0.2, '#ffffff', 1);
-    for (let i = 0; i < 4; i++) part({ x: tx, y: ty, vx: Math.cos(f + rand(-0.5, 0.5)) * 70, vy: Math.sin(f + rand(-0.5, 0.5)) * 70, life: 0.18, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 });
-  } else if (style === 'axe') {
-    // labrys: two blades = two arcs, outer edge and an inner echo; the finisher is a whirl
-    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.55, r + 3, 0.24, col);
-    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.72, r, 0.16, metal);
-    smear(x, y, f - half * 0.7 + Math.PI, f + half * 0.7 + Math.PI, r * 0.5, r * 0.75, 0.14, metal);
-    if (a.spin) { ring(x, y, 6, r + 4, 0.3, col, 2); burst(P.x, P.y, 16, '#8c1c33', 80, { grav: 60 }); }
-  } else if (style === 'chop') {
-    // pelekys: an overhead chop slammed into the floor, a crack runs ahead
-    smear(x, y, f - half, f + half, r * 0.35, r + 3, 0.28, '#3b2a22');
-    smear(x, y, f - half * 0.8, f + half * 0.8, r * 0.55, r, 0.18, metal);
-    const tx = P.x + Math.cos(f) * r * 0.9, ty = P.y + Math.sin(f) * r * 0.9;
-    for (let i = 1; i <= (a.finisher ? 5 : 3); i++) burst(tx + Math.cos(f) * i * 6, ty + Math.sin(f) * i * 6, 3, '#5c4a3a', 40, { grav: 80, size: 1.5 });
-    ring(tx, ty, 2, a.finisher ? 22 : 14, 0.3, '#8a7c68', 2);
-  } else if (style === 'cleave') {
-    // titan's cleaver: an enormous dark slab of an arc, heavy dust and a white edge
-    smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.2, r + 6, 0.36, '#2a2530');
-    smear(x, y, f - half, f + half, r * 0.55, r + 3, 0.26, metal);
-    smear(x, y, f - half * 0.9, f + half * 0.9, r * 0.85, r + 1, 0.18, col);
-    burst(P.x + Math.cos(f) * r * 0.7, P.y + Math.sin(f) * r * 0.7, a.finisher ? 30 : 16, '#6b5f52', 120, { grav: 80, size: 2 });
-    if (a.finisher) { ring(P.x, P.y, 6, r + 10, 0.4, '#b8aa90', 3); shake(0.3); }
+// the swing looks like its hitbox; weapon flavour (dust, sparks, blood) on top
+function swingFx(P, shape, a, r, half, metal, col, heavy) {
+  const x = P.x, y = P.y - 5, f = P.face, style = P.C.style;
+  if (shape === 'line') {
+    const w = a.width || 8;
+    beam(x, y, f, r + 6, w + 4, a.finisher ? 0.24 : 0.18, col);
+    beam(x, y, f, r + 8, Math.max(2, w * 0.35), a.finisher ? 0.2 : 0.14, '#ffffff');
+    const tx = P.x + Math.cos(f) * (r + 6), ty = y + Math.sin(f) * (r + 6);
+    ring(tx, ty, 1, a.finisher ? 14 : 8, 0.2, '#ffffff', 1);
+    for (let i = 0; i < 6; i++) part({ x: tx, y: ty, vx: Math.cos(f + rand(-0.6, 0.6)) * 80, vy: Math.sin(f + rand(-0.6, 0.6)) * 80, life: 0.2, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 });
+    if (style === 'chop') for (let i = 1; i <= 6; i++) burst(P.x + Math.cos(f) * i * r / 6, P.y + Math.sin(f) * i * r / 6, 3, '#5c4a3a', 50, { grav: 90, size: 1.5 });
+  } else if (shape === 'cone') {
+    cone(x, y, f, half, r + 4, 0.16, col);
+    cone(x, y, f, half * 0.45, r + 6, 0.12, a.bash ? '#f0d9a0' : '#ffffff');
+    if (a.bash) { const tx = P.x + Math.cos(f) * r * 0.7, ty = y + Math.sin(f) * r * 0.7; ring(tx, ty, 2, 20, 0.25, '#f0d9a0', 2); burst(tx, ty, 12, '#f0d9a0', 90); }
+  } else if (shape === 'cross') {
+    for (const [off, c] of [[0.55, '#ffffff'], [-0.55, col]]) { beam(x, y, f + off, r + 4, 6, 0.2, c); beam(x, y, f + off, r + 5, 2, 0.16, '#ffffff'); }
+    const tx = P.x + Math.cos(f) * r * 0.6, ty = y + Math.sin(f) * r * 0.6; ring(tx, ty, 2, 16, 0.25, col, 2);
+  } else if (shape === 'impact') {
+    const c = impactAt(P, a), R = (a.r || 20) * P.s.reach;
+    smear(x, y, f - 0.5, f + 0.5, 4, a.range * P.s.reach, 0.14, metal); // the overhead fall
+    later(0.03, () => {
+      slam(c.x, c.y, R, 0.32, col); ring(c.x, c.y, R * 0.3, R + 6, 0.35, '#b8aa90', 3);
+      burst(c.x, c.y, heavy ? 30 : 18, '#8a7c68', 120, { grav: 100, size: 2 });
+      for (let i = 0; i < 6; i++) { const aa = (i / 6) * TAU + rand(-0.3, 0.3); for (let j = 1; j <= 3; j++) part({ x: c.x + Math.cos(aa) * R * 0.3 * j, y: c.y + Math.sin(aa) * R * 0.3 * j, vx: 0, vy: 0, life: 0.5, color: '#2a2018', size: 1, drag: 0 }); }
+      shake(heavy ? 0.35 : 0.2);
+    });
+  } else if (shape === 'spin') {
+    smear(x, y, f, f + TAU, r * 0.45, r + 3, 0.26, col);
+    smear(x, y, f + 0.4, f + TAU + 0.4, r * 0.7, r, 0.2, metal);
+    ring(x, y, 6, r + 4, 0.3, col, 2);
+    if (style === 'axe') burst(P.x, P.y, 16, '#8c1c33', 80, { grav: 60 });
   } else {
-    smear(x, y, f - half * 1.08, f + half * 1.08, Math.max(6, r * 0.45), r + 3, heavy ? 0.26 : 0.2, col);
-    smear(x, y, f - half * 0.95, f + half * 0.95, Math.max(8, r * 0.7), r, heavy ? 0.16 : 0.12, metal);
-    if (a.bash) { const tx = P.x + Math.cos(f) * 14, ty = y + Math.sin(f) * 14; ring(tx, ty, 2, 18, 0.25, '#f0d9a0', 2); burst(tx, ty, 10, '#f0d9a0', 80); }
+    // arc: weapons differ in thickness and layering
+    const thick = style === 'cleave' ? 0.2 : style === 'axe' ? 0.5 : style === 'smash' ? 0.3 : 0.45;
+    if (style === 'cleave') smear(x, y, f - half * 1.05, f + half * 1.05, r * 0.15, r + 6, 0.36, '#2a2530');
+    smear(x, y, f - half * 1.08, f + half * 1.08, Math.max(6, r * thick), r + 3, heavy ? 0.28 : 0.2, col);
+    smear(x, y, f - half * 0.95, f + half * 0.95, Math.max(8, r * (thick + 0.25)), r, heavy ? 0.18 : 0.12, metal);
+    if (style === 'axe') smear(x, y, f - half * 0.7 + Math.PI, f + half * 0.7 + Math.PI, r * 0.5, r * 0.75, 0.14, metal);
+    if (style === 'smash' || style === 'cleave') burst(P.x + Math.cos(f) * r * 0.7, P.y + Math.sin(f) * r * 0.7, 14, '#6b5f52', 100, { grav: 80, size: 2 });
   }
-  if (a.spin && style !== 'axe') ring(x, y, 4, r, 0.25, col, 2);
-  for (let i = 0; i < (heavy ? 10 : 5); i++) { const aa = f + rand(-half, half); part({ x: P.x + Math.cos(aa) * r * 0.8, y: y + Math.sin(aa) * r * 0.8, vx: Math.cos(aa) * 40, vy: Math.sin(aa) * 40, life: 0.25, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 }); }
+  for (let i = 0; i < (heavy ? 10 : 5); i++) { const aa = f + rand(-Math.min(half, 1.2), Math.min(half, 1.2)); part({ x: P.x + Math.cos(aa) * r * 0.8, y: y + Math.sin(aa) * r * 0.8, vx: Math.cos(aa) * 40, vy: Math.sin(aa) * 40, life: 0.25, color: i % 2 ? col : '#fff6e0', size: 0.5, drag: 6 }); }
 }
 
 // white slash streak across the target: sells every hit
@@ -581,7 +579,7 @@ export function drawPlayer(g, P) {
   if (P.rageT > 0 && Math.random() < 0.4) part({ x: P.x + rand(-5, 5), y: P.y - rand(0, 14), vx: 0, vy: -30, life: 0.3, color: '#ff3355', size: 1, drag: 1, glow: true });
   if (back) drawCloth(g, P);
   if (!back) drawWeapon(g, P, z);
-  if (P.frostShield > 0) { g.globalAlpha = 0.5; g.fillStyle = '#93e2ff'; g.fillRect(rp(P.x - 7), rp(P.y - 17), 14, 0.5); g.globalAlpha = 1; }
+  if (P.frostShield > 0) { g.globalAlpha = 0.35 + 0.15 * Math.sin(G.real * 6); g.fillStyle = '#93e2ff'; pcircle(g, P.x, P.y - 6, 9, 10); g.globalAlpha = 1; }
   if (P.sapT > 0) { g.globalAlpha = 0.4 + 0.3 * Math.sin(G.real * 10); g.fillStyle = '#ffb347'; g.fillRect(rp(P.x - 6), rp(P.y + 1), 12, 0.5); g.globalAlpha = 1; }
 }
 function drawCloth(g, P) {
@@ -598,13 +596,14 @@ function drawCloth(g, P) {
 }
 function weaponAngle(P, st) {
   const a = P.atk, half = (a.arc * Math.PI) / 360, rate = atkRate(P);
-  if (P.C.style === 'thrust') {
+  const shp = a.shape || (a.arc >= 360 ? 'spin' : 'arc');
+  if (shp === 'line' || shp === 'cone' || shp === 'cross') {
     // dory: pull back, then drive the point straight out along the facing
     if (P.phase === 'wind') { const k = ease.outCubic(Math.min(1, st / (a.wind / rate))); return [P.face, 2 - k * 6]; }
     if (P.phase === 'act') { const k = ease.outQuart(Math.min(1, st / (a.act / rate))); return [P.face, -4 + k * 16]; }
     const k = ease.inOutSine(Math.min(1, st / (a.rec / rate))); return [P.face, 12 - 9 * k];
   }
-  if (P.C.style === 'chop' || P.C.style === 'cleave') {
+  if (shp === 'impact') {
     // overhead: the blade rises high behind, then falls through the facing
     const side = P.combo % 2 === 0 ? 1 : -1, up = half * 1.4;
     if (P.phase === 'wind') { const k = ease.outCubic(Math.min(1, st / (a.wind / rate))); return [P.face - side * up * k, 3 - k * 3]; }
@@ -634,7 +633,7 @@ function drawWeapon(g, P, z) {
   let ang = P.face, reach = 4;
   if (melee) {
     [ang, reach] = weaponAngle(P, P.st);
-    if (P.atk.spin) ang = P.face + (P.phase === 'act' ? TAU * Math.min(1, P.st / P.atk.act) : 0);
+    if (P.atk.spin || P.atk.arc >= 360) ang = P.face + (P.phase === 'act' ? TAU * Math.min(1, P.st / P.atk.act) : 0);
   } else if (P.state === 'attack' && P.atk?.kind === 'power' && P.atk.spinT && P.st < P.atk.spinT) { ang = P.face + G.real * 22; reach = 6; }
   else if (powering) {
     // weapon drawn back over the shoulder, trembling with the stored power

@@ -36,13 +36,19 @@ export function dissolve(spr, x, y, flip, dirX = 0, dirY = 0, tintCol) {
 }
 export function ring(x, y, r0, r1, life, color, th = 1) { G.rings.push({ x, y, r0, r1, t: 0, life, color, th }); }
 export function smear(x, y, a0, a1, r0, r1, life, color) { G.arcs.push({ x, y, a0, a1, r0, r1, t: 0, life, color }); }
+// thrust: a tapered beam shooting out along `ang`
+export function beam(x, y, ang, len, w, life, color) { G.arcs.push({ kind: 'beam', x, y, ang, len, w, t: 0, life, color }); }
+// stab / bash: a filled wedge
+export function cone(x, y, ang, half, len, life, color) { G.arcs.push({ kind: 'cone', x, y, ang, half, len, t: 0, life, color }); }
+// overhead blow landing: a flash disc on the ground
+export function slam(x, y, r, life, color) { G.arcs.push({ kind: 'slam', x, y, r, t: 0, life, color }); }
 export function text(x, y, txt, color = '#ece4d0', big = false, key = null) {
   // hits on the same target within 0.4 s merge into one growing number instead of a cloud of digits
   if (key && typeof txt === 'number') {
     const prev = G.texts.find((t) => t.key === key && t.t < 0.4);
     if (prev) { prev.val += txt; prev.txt = String(Math.round(prev.val)); prev.t = 0.02; prev.x = x; prev.y = y; prev.big = prev.big || big; prev.color = big ? color : prev.color; prev.pop = 1; return; }
   }
-  G.texts.push({ x: x + rand(-2, 2), y, txt: String(txt), val: typeof txt === 'number' ? txt : 0, key, color, t: 0, life: big ? 1.1 : 0.85, big, vx: rand(-8, 8), pop: 1 });
+  G.texts.push({ x: x + rand(-2, 2), y, txt: typeof txt === 'number' ? String(Math.round(txt)) : String(txt), val: typeof txt === 'number' ? txt : 0, key, color, t: 0, life: big ? 1.1 : 0.85, big, vx: rand(-8, 8), pop: 1 });
   if (G.texts.length > 60) G.texts.shift();
 }
 export function banner(title, sub = '', color = '#ece4d0', life = 2.4) { G.banner = { title, sub, color, t: 0, life }; }
@@ -89,6 +95,7 @@ export function drawParts(g) {
 export function drawArcs(g) {
   for (const a of G.arcs) {
     const k = a.t / a.life;
+    if (a.kind) { drawShape(g, a, k); continue; }
     const e = ease.outQuart(Math.min(1, k * 1.6));
     const end = a.a0 + (a.a1 - a.a0) * e;
     const start = a.a0 + (a.a1 - a.a0) * Math.max(0, (k - 0.15) * 1.4);
@@ -106,6 +113,26 @@ export function drawArcs(g) {
     g.fill();
   }
   g.globalAlpha = 1;
+}
+function drawShape(g, a, k) {
+  g.globalAlpha = 1 - k; g.fillStyle = a.color; g.beginPath();
+  if (a.kind === 'beam') {
+    const c = Math.cos(a.ang), s = Math.sin(a.ang), nx = -s, ny = c;
+    const L = a.len * ease.outQuart(Math.min(1, k * 2.4)), s0 = a.len * Math.max(0, (k - 0.35) * 1.3), w = (a.w / 2) * (1 - 0.5 * k);
+    g.moveTo(a.x + c * s0 + nx * w * 0.35, a.y + s * s0 + ny * w * 0.35);
+    g.lineTo(a.x + c * L * 0.72 + nx * w, a.y + s * L * 0.72 + ny * w);
+    g.lineTo(a.x + c * L, a.y + s * L);
+    g.lineTo(a.x + c * L * 0.72 - nx * w, a.y + s * L * 0.72 - ny * w);
+    g.lineTo(a.x + c * s0 - nx * w * 0.35, a.y + s * s0 - ny * w * 0.35);
+  } else if (a.kind === 'cone') {
+    const L = a.len * (0.45 + 0.55 * ease.outQuart(Math.min(1, k * 2.4))), r0 = a.len * 0.12;
+    g.moveTo(a.x + Math.cos(a.ang) * r0, a.y + Math.sin(a.ang) * r0);
+    for (let i = 0; i <= 10; i++) { const t = a.ang - a.half + (2 * a.half * i) / 10; g.lineTo(a.x + Math.cos(t) * L, a.y + Math.sin(t) * L); }
+  } else {
+    g.globalAlpha = (1 - k) * 0.55;
+    g.ellipse(a.x, a.y, a.r * (0.7 + 0.3 * ease.outCubic(k)), a.r * (0.7 + 0.3 * ease.outCubic(k)) * 0.6, 0, 0, TAU);
+  }
+  g.fill();
 }
 export function drawRings(g) {
   for (const r of G.rings) {

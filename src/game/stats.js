@@ -5,6 +5,7 @@ import { G } from './state.js';
 import { TREE } from '../data/tree.js';
 import { BOON } from '../data/boons.js';
 import { BASES, WEIGHT, SLOT_MUL, AFFIXES, RELICS, ELEMENTS, itemPower } from '../data/items.js';
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ASPECT_IDX = ['blood', 'fire', 'frost', 'storm', 'shadow'];
 
 export function baseStats() {
@@ -13,8 +14,8 @@ export function baseStats() {
     crit: HERO.crit, critMul: HERO.critMul, poiseDmg: 1, backstab: 0,
     dmgMul: 1, atkSpeed: 1, dmgTaken: 1, ashMul: 1, healMul: 1, findMul: 1, matMul: 1,
     flasks: HERO.flasks, flaskHeal: HERO.flaskHeal, perfectWindow: 0.14, slowmo: 0.35,
-    chargeRate: 75, powerMul: 1, reach: 1, leech: 0, igniteChance: 0, leg: {}, stunImm: false, slowImm: false, burnImm: false, unlocked: {},
-    rallyEff: 1, rallyTime: 1.6, atkSta: 1, dodgeCost: 1, iframeBonus: 0,
+    ward: 0, wardTime: 6, chargeRate: 75, powerMul: 1, reach: 1, leech: 0, igniteChance: 0, leg: {}, stunImm: false, slowImm: false, burnImm: false, unlocked: {},
+    rallyEff: 1, rallyTime: 3, atkSta: 1, dodgeCost: 1, iframeBonus: 0,
     counterMul: 1, counterWindow: 0,
     armor: 0, load: 0, loadCap: HERO.loadCap,
     rerolls: 0, cards: 3, startBoon: false, startWith: [], lastStand: false, unstoppable: false,
@@ -55,7 +56,7 @@ export function applyGear(s, equip, items) {
       else if (k === 'ignite') s.igniteChance += 0.12;
       else if (k === 'keen') { s.crit += 0.06; s.critMul += 0.25; }
       else if (k === 'might') s.powerMul *= 1.2;
-      else if (k === 'leech') s.leech += 0.015;
+      else if (k === 'leech') s.leech += 1 / 500;
       else if (k === 'breath') { s.maxSta += 25; s.staRegen *= 1.1; }
     }
     // divine power (flag read by combat/player; pure stat parts applied here)
@@ -66,13 +67,14 @@ export function applyGear(s, equip, items) {
         case 'w_great': s.powerMul *= 1.3; break;
         case 'w_cleaver': s.powerMul *= 1.25; break;
         case 'h_light': s.speed *= 1.15; break;
-        case 'h_heavy': s.dmgTaken *= 0.85; s.stunImm = true; break;
+        case 'h_heavy': s.ward += 1; s.stunImm = true; break;
+        case 'c_light': s.ward += 2; s.wardTime *= 0.5; break;
         case 'c_heavy': s.slowImm = true; s.burnImm = true; s.armor += 15; break;
         case 'g_medium': s.powerMul *= 1.4; break;
         case 'g_heavy': s.chargeRate *= 1.4; break;
         case 'b_light': s.perfectWindow *= 2; s.dodgeCost *= 0.7; break;
         case 'b_medium': s.cards += 1; break;
-        case 'b_heavy': s.slowImm = true; s.dmgTaken *= 0.8; break;
+        case 'b_heavy': s.slowImm = true; s.ward += 1; break;
       }
     }
     if (it.infuse) {
@@ -94,6 +96,8 @@ export function applyGear(s, equip, items) {
   if (s.roots.wind) { s.dodgeCost *= 0.75; s.perfectWindow += 0.03; }
   // armour: diminishing returns; equip load decides the roll
   s.dmgTaken *= 80 / (80 + s.armor);
+  // armour becomes bronze shields: each absorbs one blow instead of a heart and comes back after a quiet moment
+  s.ward += Math.min(3, Math.floor(s.armor / 26));
   s.loadRatio = s.load / s.loadCap;
   s.roll = loadClass(s.loadRatio);
   const RL = ROLL[s.roll];
@@ -109,7 +113,8 @@ export function applyBoons(s, boons) {
     const b = BOON[id];
     if (b && b.stat) b.stat(s, boons[id]);
   }
-  s.maxHp = Math.round(s.maxHp);
+  s.maxHp = clamp(Math.round(s.maxHp), 1, 5); // five hearts, never more
+  s.ward = clamp(Math.round(s.ward), 0, 4);
   s.maxSta = Math.round(s.maxSta);
   s.flasks = Math.max(0, s.flasks);
   s.crit = Math.min(0.75, s.crit);

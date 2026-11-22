@@ -136,8 +136,8 @@ export function unleash(P, p) {
       smear(P.x, P.y - 5, a - 0.9, a + 0.9, R * 0.6, R + 4, 0.22, col);
       for (let i = 1; i <= 4; i++) later(0.04 * i, () => ring(P.x + Math.cos(a) * i * R * 0.22, P.y + Math.sin(a) * i * R * 0.22, 2, 10 + i * 4, 0.25, '#f0d9a0', 2));
       aoe(P, P.x, P.y, R, 20 * M, { cone: a, half: 1.1, knock: 220, poise: 4, stun: 0.8 + 1.4 * p });
-      P.frostShield = Math.max(P.frostShield, Math.round(10 + 40 * p));
-      text(P.x, P.y - 26, 'барьер ' + P.frostShield, '#f0d9a0');
+      P.frostShield = Math.max(P.frostShield, p >= 0.5 ? 2 : 1);
+      text(P.x, P.y - 26, 'барьер ×' + P.frostShield, '#f0d9a0');
       if (full) { P.iframe = 2.5; P.domeT = 2.5; ring(P.x, P.y - 6, 4, 26, 0.5, '#ffd36b', 3); }
       sfx.block(); sfx.boom();
       break;
