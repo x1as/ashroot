@@ -27,7 +27,7 @@ function resize() {
   canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
   canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
   // k = device pixels per buffer pixel (integer = crisp), RES buffer pixels per world unit (Scale2x art)
-  const k = Math.max(1, Math.round(Math.min(cw * dpr, ch * dpr) / (180 * RES)));
+  const k = Math.max(1, Math.round(Math.min(cw * dpr, ch * dpr) / (250 * RES)));
   const scale = k * RES;
   Object.assign(G.view, { cw, ch, dpr, scale, k, w: Math.ceil((cw * dpr) / scale), h: Math.ceil((ch * dpr) / scale) });
   const probe = getComputedStyle(document.getElementById('safe'));

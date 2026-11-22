@@ -31,7 +31,7 @@ window.__bot = function (cls, maxSimSec = 900, god = true) {
         const dir = d > want ? 1 : ranged ? -1 : 0;
         tx = P.x + (e.x - P.x) * dir; ty = P.y + (e.y - P.y) * dir;
         G.mouseWorld = { x: e.x, y: e.y - 4 };
-        if (d < (ranged ? 180 : 34)) { inp.buf.attack = 0.15; inp.down.attack = cls === 'bow' ? i % 50 < 40 : true; }
+        if (d < (ranged ? 180 : 40)) { const ph = i % 300; const hold = ph > 200 && ph < 290; inp.down.attack = hold || i % 14 < 2; if (!hold && i % 14 === 0) inp.buf.attack = 0.15; }
         if (e.state === 'wind' && d < 40 && Math.random() < 0.08) inp.buf.dodge = 0.15;
         if (Math.random() < 0.01) inp.buf.skill = 0.15;
         if (P.hp < P.s.maxHp * 0.4 && Math.random() < 0.01) inp.buf.flask = 0.15;

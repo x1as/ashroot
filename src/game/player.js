@@ -6,12 +6,14 @@ import { BASES } from '../data/items.js';
 import { ELEMENT_ACCENT } from '../art/bank.js';
 import { input } from '../engine/input.js';
 import { damp, angTo, angDiff, dist, clamp, lerp, ease, TAU, rand } from '../engine/util.js';
-import { drawSprite, rp } from '../engine/sprite.js';
+import { drawSprite, rp, pcircle } from '../engine/sprite.js';
 import { burst, smear, ring, shake, text, kick, part, flash } from '../engine/fx.js';
 import { sfx } from '../engine/audio.js';
 import { SPR, heroFrames } from '../art/bank.js';
 import { collide, moveCollide, tileAt, T, TS, spikeState, solidT } from './world.js';
 import { hitProp } from './props.js';
+import { unleash } from './power.js';
+import { weaponSprite } from '../art/bank.js';
 import { hitEnemy, hurtPlayer, lv, reso, nova, dotScale, floorScale, bolt, chillE } from './combat.js';
 
 // look of the hero from the equipped armour weights + weapon infusion
@@ -19,11 +21,11 @@ export function gearLook(inv) {
   const kind = (slot) => { const it = inv.items.find((i) => i.uid === inv.equip[slot]); return it ? BASES[it.base].kind : 'none'; };
   const w = inv.items.find((i) => i.uid === inv.equip.weapon);
   const el = w && w.infuse && !w.infuse.startsWith('root:') ? w.infuse : null;
-  return { helm: kind('helm'), chest: kind('chest'), boots: kind('boots'), element: el };
+  return { helm: kind('helm'), chest: kind('chest'), boots: kind('boots'), element: el, wr: w ? w.rarity : 0 };
 }
 export function applyLoadout(P, stats, look) {
   P.s = stats; P.wk = stats.wk; P.C = WEAPONS[stats.wk];
-  P.frames = heroFrames(look); P.accent = P.frames.accent;
+  P.frames = heroFrames(look); P.accent = P.frames.accent; P.wr = look.wr || 0;
 }
 
 export function createPlayer(stats, look, x, y) {
@@ -105,7 +107,31 @@ export function updatePlayer(P, dt) {
       if (input.pressed('dodge')) tryDodge(P, mx, my);
       else if (input.pressed('skill')) trySkill(P);
       else if (input.pressed('flask')) tryFlask(P);
-      else if (input.peek('attack')) startAttack(P);
+      else if (input.pressed('attack')) { P.setState('hold'); }
+      break;
+    }
+    case 'hold': {
+      // tapping releases a normal attack; holding past 0.18 s starts pouring stamina into a charged strike
+      P.vx = damp(P.vx, mx * speed * 0.6, 16, dt); P.vy = damp(P.vy, my * speed * 0.6, 16, dt);
+      if (!input.held('attack')) { P.setState('move'); startAttack(P, true); break; }
+      if (P.st >= 0.18) { P.setState('power'); P.power = 0; P.tier = 0; }
+      break;
+    }
+    case 'power': {
+      P.vx = damp(P.vx, mx * speed * 0.4, 14, dt); P.vy = damp(P.vy, my * speed * 0.4, 14, dt);
+      const spend = Math.min(P.sta, 75 * dt);
+      P.sta -= spend; P.power += spend; P.staDelay = 0.7;
+      const pr = P.power / s.maxSta, tier = Math.floor(pr * 4 + 1e-6);
+      if (tier > P.tier) { P.tier = tier; ring(P.x, P.y - 6, 4, 16 + tier * 6, 0.3, tier >= 4 ? '#ffffff' : P.accent[0], 2); sfx.ui(); if (tier >= 4) flash(P.accent[0], 0.12); }
+      if (Math.random() < dt * (20 + 60 * pr)) { const aa = rand(TAU), rr = 10 + 18 * pr; part({ x: P.x + Math.cos(aa) * rr, y: P.y - 6 + Math.sin(aa) * rr * 0.6, vx: -Math.cos(aa) * 30, vy: -Math.sin(aa) * 20, life: 0.35, color: pr > 0.95 ? '#ffffff' : P.accent[0], size: 1.5, drag: 2, glow: true }); }
+      if (input.pressed('dodge')) { P.sta += P.power * 0.5; P.power = 0; tryDodge(P, mx, my); break; }
+      if (!input.held('attack')) {
+        const p = P.power / s.maxSta;
+        if (P.power < 6) { P.setState('move'); startAttack(P, true); break; }
+        unleash(P, p);
+        P.atk = { kind: 'power', wind: 0, act: 0.08, rec: 0.2 + 0.35 * p, arc: 360 };
+        P.setState('attack'); P.phase = 'act'; P.power = 0; P.sq = 0.6;
+      }
       break;
     }
     case 'attack': updateAttack(P, dt); break;
@@ -212,12 +238,12 @@ function updateDodge(P, dt) {
 }
 
 // ---------------- attacks ----------------
-function startAttack(P) {
+function startAttack(P, fromTap) {
   const C = P.C;
   if (C.arrow) {
     input.pressed('attack');
-    if (!useSta(P, 0)) return;
-    P.setState('charge'); P.charge = 0; P.chargeFull = false; sfx.bow(0);
+    if (!P.s.staFree && P.sta <= 0) { text(P.x, P.y - 20, 'нет сил', '#8189a0'); return; }
+    P.charge = 0; fireArrow(P);
     return;
   }
   input.pressed('attack');
@@ -240,20 +266,19 @@ function updateAttack(P, dt) {
   const a = P.atk, rate = atkRate(P);
   const wind = a.wind / rate, act = a.act / rate, rec = a.rec / rate;
   const mx = input.move.x, my = input.move.y;
+  const mm = { sword: 0.55, dagger: 0.75, greatsword: 0.35, staff: 0.6, bow: 0.6 }[P.wk] * P.s.speed;
+  P.vx = damp(P.vx, mx * mm, 14, dt); P.vy = damp(P.vy, my * mm, 14, dt);
   if (P.phase === 'wind') {
-    P.vx = damp(P.vx, 0, 14, dt); P.vy = damp(P.vy, 0, 14, dt);
     // slight aim correction during windup (readable, not twitchy)
     const aim = !input.touch && input.mouse.inside ? angTo(P.x, P.y - 5, G.mouseWorld.x, G.mouseWorld.y) : autoAim(P);
     P.face += angDiff(P.face, aim) * Math.min(1, dt * 12);
     if (P.st >= wind) { P.phase = 'act'; P.st = 0; strike(P); }
   } else if (P.phase === 'act') {
-    if (a.lunge) { const v = a.lunge / Math.max(0.05, act); P.vx = Math.cos(P.face) * v; P.vy = Math.sin(P.face) * v; }
     if (P.st >= act) { P.phase = 'rec'; P.st = 0; }
   } else {
-    P.vx = damp(P.vx, mx * P.s.speed * 0.25, 12, dt); P.vy = damp(P.vy, my * P.s.speed * 0.25, 12, dt);
     // cancel recovery into a dodge (Dead Cells responsiveness) — never the windup (souls commitment)
     if (input.pressed('dodge')) { P.comboWin = 0; tryDodge(P, mx, my); return; }
-    if (P.st > rec * 0.35 && input.peek('attack')) {
+    if (a.kind !== 'power' && P.st > rec * 0.35 && input.peek('attack')) {
       if (a.kind === 'melee') { const list = comboList(P); P.combo = (P.combo + 1) % list.length; P.comboWin = 1; }
       P.setState('move'); startAttack(P); return;
     }
@@ -269,8 +294,23 @@ function strike(P) {
   const heavy = !!a.hyper;
   const arcW = lv('c_wide') && P.wk === 'sword' ? 0.35 : 0;
   // two-layer crescent: coloured edge + white-hot core, then a fading echo
-  smear(P.x, P.y - 5, P.face - (half + arcW) * 1.08, P.face + (half + arcW) * 1.08, Math.max(6, r * 0.45), r + 3, heavy ? 0.26 : 0.2, P.accent[0]);
-  smear(P.x, P.y - 5, P.face - (half + arcW) * 0.95, P.face + (half + arcW) * 0.95, Math.max(8, r * 0.7), r, heavy ? 0.16 : 0.12, '#fff6e0');
+  const metal = ['#e8e2d2', '#f0d9a0', '#c9d2e8', '#ffd36b'][P.wr];
+  if (P.wk === 'dagger') {
+    // machairai: thin, fast, glinting cuts; the finisher crosses both blades into an X
+    smear(P.x, P.y - 5, P.face - half, P.face + half, r * 0.78, r + 2, 0.13, metal);
+    smear(P.x, P.y - 5, P.face - half * 0.8, P.face + half * 0.8, r * 0.88, r, 0.1, P.accent[0]);
+    if (a.finisher) { smear(P.x, P.y - 5, P.face + 0.7 - 0.8, P.face + 0.7 + 0.8, r * 0.6, r + 6, 0.22, '#ffffff'); smear(P.x, P.y - 5, P.face - 0.7 - 0.8, P.face - 0.7 + 0.8, r * 0.6, r + 6, 0.22, P.accent[0]); }
+  } else if (P.wk === 'greatsword') {
+    // club: a fat heavy arc, then the head hits the ground — dust ring and a crack at the tip
+    smear(P.x, P.y - 5, P.face - half * 1.05, P.face + half * 1.05, r * 0.25, r + 4, 0.3, '#8a7c68');
+    smear(P.x, P.y - 5, P.face - half * 0.9, P.face + half * 0.9, r * 0.45, r, 0.2, metal);
+    const tx = P.x + Math.cos(P.face) * r * 0.85, ty = P.y + Math.sin(P.face) * r * 0.85;
+    ring(tx, ty, 2, 16 + (a.finisher ? 14 : 0), 0.35, '#b8aa90', 2); burst(tx, ty, a.finisher ? 26 : 14, '#8a7c68', 90, { grav: 90, size: 2 });
+  } else {
+    // xiphos: wide two-layer crescent; the finisher is a full sweeping arc with a bright core
+    smear(P.x, P.y - 5, P.face - (half + arcW) * 1.08, P.face + (half + arcW) * 1.08, Math.max(6, r * 0.45), r + 3, heavy ? 0.26 : 0.2, P.accent[0]);
+    smear(P.x, P.y - 5, P.face - (half + arcW) * 0.95, P.face + (half + arcW) * 0.95, Math.max(8, r * 0.7), r, heavy ? 0.16 : 0.12, metal);
+  }
   if (a.spin) ring(P.x, P.y - 5, 4, r, 0.25, P.accent[0], 2);
   for (let i = 0; i < (heavy ? 10 : 5); i++) { const aa = P.face + rand(-half, half); part({ x: P.x + Math.cos(aa) * r * 0.8, y: P.y - 5 + Math.sin(aa) * r * 0.8, vx: Math.cos(aa) * 40, vy: Math.sin(aa) * 40, life: 0.25, color: i % 2 ? P.accent[0] : '#fff6e0', size: 0.5, drag: 6 }); }
   sfx.swing(heavy);
@@ -470,6 +510,14 @@ export function drawPlayer(g, P) {
   const bob = P.state === 'move' && moving ? -Math.abs(Math.sin(P.animT * Math.hypot(P.vx, P.vy) / 9 * Math.PI / 2)) : 0;
   const z = P.jumpZ || 0;
   for (const a of P.afterimg) drawSprite(g, spr, a.x, a.y, { flip: a.flip, alpha: 0.35 * (1 - a.t / 0.25), white: true });
+  if (P.state === 'power') {
+    // charge aura: grows with the stamina poured in; four tiers, white at full
+    const pw = P.power / P.s.maxSta, R = 8 + 18 * pw, col = pw > 0.97 ? '#ffffff' : P.accent[0];
+    g.globalAlpha = 0.18 + 0.2 * pw; g.fillStyle = col; pcircle(g, P.x, P.y, R, R * 0.45);
+    g.globalAlpha = 0.9; g.strokeStyle = col; g.lineWidth = 0.75;
+    g.beginPath(); g.ellipse(rp(P.x), rp(P.y), R, R * 0.45, 0, -Math.PI / 2, -Math.PI / 2 + TAU * pw); g.stroke();
+    g.globalAlpha = 1;
+  }
   // cloth behind body
   const back = Math.sin(P.face) < -0.3;
   if (!back) drawCloth(g, P);
@@ -503,31 +551,51 @@ function weaponAngle(P, st) {
 }
 function drawWeapon(g, P, z) {
   const key = P.C.sprite;
-  const spr = SPR.weapon[key];
-  let ang = P.face, reach = 4;
+  const spr = weaponSprite(key, P.wr);
   const melee = P.state === 'attack' && P.atk?.kind === 'melee';
+  const powering = P.state === 'power';
+  const pw = powering ? P.power / P.s.maxSta : 0;
+  const put = (a, r, alpha, hand = 0) => {
+    const hx = P.x + Math.cos(a) * r - P.faceX * hand * 3, hy = P.y - 6 - z + Math.sin(a) * r * 0.8 + hand * 1.5;
+    g.save(); g.globalAlpha = alpha;
+    g.translate(rp(hx), rp(hy)); g.rotate(a);
+    // titanic/divine weapons glow (soft pulsing silhouette behind the blade)
+    if (spr.glow && alpha > 0.9) { g.globalAlpha = 0.35 + 0.25 * Math.sin(G.real * 5); g.drawImage(spr.glow, -3, -spr.h / 2 - 1, spr.w + 2, spr.h + 2); g.globalAlpha = alpha; }
+    g.drawImage(spr.c, -2, -spr.h / 2, spr.w, spr.h);
+    return g;
+  };
+  let ang = P.face, reach = 4;
   if (melee) {
     [ang, reach] = weaponAngle(P, P.st);
     if (P.atk.spin) ang = P.face + (P.phase === 'act' ? TAU * Math.min(1, P.st / P.atk.act) : 0);
   } else if (P.state === 'skill' && P.C.skill.id === 'spin') { ang = P.face; reach = 8; }
-  else if (key === 'bow') reach = 5 + (P.state === 'charge' ? -P.charge * 2 : 0);
+  else if (powering) {
+    // weapon drawn back over the shoulder, trembling with the stored power
+    ang = P.face + Math.PI * (P.faceX > 0 ? -0.75 : 0.75) + Math.sin(G.real * 40) * 0.05 * pw; reach = 4;
+    if (key === 'bow' || key === 'staff') ang = P.face;
+  } else if (key === 'bow') reach = 5;
   else if (key === 'staff') { ang = P.face; reach = 3; }
   else { ang = P.face + (P.faceX > 0 ? 0.9 : -0.9) * 0.6 + Math.sin(P.animT * 2) * 0.05; reach = 3; }
-  const put = (a, r, alpha) => {
-    const hx = P.x + Math.cos(a) * r, hy = P.y - 6 - z + Math.sin(a) * r * 0.8;
-    g.save(); g.globalAlpha = alpha;
-    g.translate(rp(hx), rp(hy)); g.rotate(a);
-    g.drawImage(spr.c, -2, -spr.h / 2, spr.w, spr.h);
-    return g;
-  };
-  // motion trail: ghost copies at earlier moments of the swing
-  if (melee && P.phase === 'act') for (const [dt, al] of [[0.05, 0.18], [0.03, 0.3], [0.015, 0.45]]) { const [a, r] = weaponAngle(P, Math.max(0, P.st - dt)); put(a, r, al).restore(); }
-  const w = put(ang, reach, 1);
-  if (key === 'bow' && P.state === 'charge') {
-    const pull = P.charge * 4, ar = SPR.weapon['arrow_' + (P.s.element || 'none')];
-    w.drawImage(ar.c, -pull - 2, -ar.h / 2, ar.w, ar.h);
-    if (P.chargeFull && Math.floor(G.real * 12) % 2 === 0) { w.fillStyle = '#ffffff'; w.fillRect(5, -1, 2, 2); }
+
+  if (key === 'dagger') {
+    // twin machairai: one blade per hand, they alternate; the finisher swings both
+    const side = P.combo % 2 === 0;
+    const both = melee && P.atk.finisher;
+    const idleA = P.face + (P.faceX > 0 ? -1.1 : 1.1) + Math.sin(P.animT * 2 + 1) * 0.05;
+    const backAng = melee ? (both ? P.face * 2 - ang : side ? idleA : ang) : powering ? ang + 0.5 : idleA;
+    const frontAng = melee ? (both || side ? ang : idleA) : ang;
+    put(backAng, melee && !side && !both ? reach : 2, 1, 1).restore();
+    if (melee && P.phase === 'act') for (const [dt, al] of [[0.04, 0.2], [0.02, 0.4]]) { const [a2, r2] = weaponAngle(P, Math.max(0, P.st - dt)); put(a2, r2, al).restore(); }
+    put(frontAng, melee && (side || both) ? reach : 3, 1).restore();
+    return;
   }
-  if (key === 'staff') { w.globalAlpha = 0.5 + 0.3 * Math.sin(G.real * 6); w.fillStyle = '#b88cff'; w.fillRect(13, -1.5, 3, 3); }
+  if (melee && P.phase === 'act') for (const [dt, al] of [[0.05, 0.18], [0.03, 0.3], [0.015, 0.45]]) { const [a2, r2] = weaponAngle(P, Math.max(0, P.st - dt)); put(a2, r2, al).restore(); }
+  const w = put(ang, reach, 1);
+  if (key === 'bow' && powering) {
+    const pull = pw * 5, ar = SPR.weapon['arrow_' + (P.s.element || 'none')];
+    w.drawImage(ar.c, -pull - 2, -ar.h / 2, ar.w, ar.h);
+    if (pw > 0.95 && Math.floor(G.real * 12) % 2 === 0) { w.fillStyle = '#ffffff'; w.fillRect(5, -1, 2, 2); }
+  }
+  if (key === 'staff') { w.globalAlpha = 0.5 + 0.3 * Math.sin(G.real * 6); w.fillStyle = '#b88cff'; const o = 2 + pw * 3; w.fillRect(15 - o / 2, -o / 2, o, o); }
   w.restore();
 }

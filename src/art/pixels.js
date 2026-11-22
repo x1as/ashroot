@@ -38,10 +38,12 @@ export const LEGS = {
 };
 // ---------- WEAPONS (pivot = left-middle) ----------
 export const WEAPON = {
-  sword: ['..Y..........', 'NNYssssssssw.', '..Y..........'],
+  // xiphos: leaf-shaped blade, broad in the middle
+  sword: ['...Y.............', 'NNNYsssssssssssw..', 'NNNYSSSSSSSSSSSSsw', '...Y..............'],
   // olive-wood club of Heracles: knotted, thick at the head
-  club: ['..........nNNn..', 'nnnnnnnnnnNnnNn.', 'NnNnNnnNnnnNnnNn', '..........nNnNn.', '...........nn...'],
-  dagger: ['..Y.....', 'NNYsssws', '..Y.....'],
+  club: ['............nNNn...', '..........nnNnnNn..', 'NnSSnNnnNnnnnNnnNnn', 'NNSSnnnNnnnNnnNnNnn', '..........nNnNnNn..', '............nnn....'],
+  // one machaira (drawn twice: one per hand)
+  dagger: ['..Y.......', 'NNYssssw..', 'NNYSSSSssw', '..Y.......'],
   greatsword: [
     '...Y..............',
     '...YSSSSSSSSSSSSS.',

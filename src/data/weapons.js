@@ -65,7 +65,7 @@ export const WEAPONS = {
   bow: {
     name: 'Лук', tagline: 'Дар Аполлона: дальность, натяг, пробивание',
     sprite: 'bow', dmgType: 'pierce', poiseDmg: 0.9, rally: 0.22, critBonus: 0.02,
-    arrow: { dmg: 12, wind: 0.06, rec: 0.22, speed: 300, sta: 7, chargeTime: 0.6, chargedDmg: 36, chargedSpeed: 430, chargedPierce: 2, chargedSta: 13, moveWhileCharging: 0.5 },
+    arrow: { dmg: 14, wind: 0.06, rec: 0.22, speed: 320, sta: 7, chargeTime: 0.6, chargedDmg: 36, chargedSpeed: 430, chargedPierce: 2, chargedSta: 13, moveWhileCharging: 0.5 },
     skill: { id: 'volley', name: 'Залп Аполлона', cd: 6, desc: 'Отскок назад и веер из 7 стрел.' },
     strong: 'ламии, неупокоенные, отпрыски Гидры', weak: 'спарты (стрелы сквозь рёбра), гоплиты без натяга',
   },

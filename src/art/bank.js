@@ -32,6 +32,24 @@ export function heroFrames(look = {}) {
   return fr;
 }
 
+// weapon metal follows the item's rarity (mortal iron, heroic bronze, titanic steel, divine gold)
+const WPAL = [
+  { s: '#bdb6a6', S: '#8d8473', T: '#5c5446', Y: '#8a7c68', w: '#e8e2d2' },
+  { s: '#f0d9a0', S: '#c8924a', T: '#7a5126', Y: '#7fb2ff', w: '#fff3d0' },
+  { s: '#c9d2e8', S: '#7d86a8', T: '#3b3f5c', Y: '#c9a6ff', w: '#f0f4ff' },
+  { s: '#fff6c8', S: '#ffd36b', T: '#b8862e', Y: '#ffffff', w: '#ffffff' },
+];
+const wcache = new Map();
+export function weaponSprite(key, rarity = 0) {
+  const k = key + '|' + rarity;
+  if (!wcache.has(k)) {
+    const spr = bake(WEAPON[key], { pal: WPAL[rarity], accent: HERO.accent });
+    spr.glow = rarity >= 2 ? tint(spr, rarity === 3 ? '#ffd36b' : '#b88cff') : null;
+    wcache.set(k, spr);
+  }
+  return wcache.get(k);
+}
+
 export function bakeAll() {
   for (const [k, rows] of Object.entries(WEAPON)) SPR.weapon[k] = bake(rows, { accent: HERO.accent });
   for (const [el, acc] of Object.entries({ none: HERO.accent, ...ELEMENT_ACCENT })) SPR.weapon['arrow_' + el] = bake(WEAPON.arrow, { accent: acc });

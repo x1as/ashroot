@@ -100,6 +100,7 @@ function updateProjectiles(dt) {
     }
     if (Math.random() < (p.owner === 'player' ? 0.5 : 0.15) && p.kind !== 'arrow' && p.kind !== 'bonearrow') G.parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.2, max: 0.2, size: 1, color: p.color, drag: 0, grav: 0, z: 0, vz: 0 });
   }
+  for (const p of G.projs) if (p.life <= 0 && p.flare && !p.flared) { p.flared = true; G.hazards.push({ kind: 'circle', x: p.x, y: p.y, r: 60, t: 0, wind: 0.05, dmg: p.dmg * 0.8 * G.player.s.dmgMul, owner: 'player', color: '#ffd36b', type: 'fire' }); }
   G.projs = G.projs.filter((p) => p.life > 0);
   if (G.projs.length > 220) G.projs.splice(0, G.projs.length - 220);
 }
@@ -272,6 +273,22 @@ function drawProj(g, p) {
     g.save(); g.translate(rp(p.x), rp(p.y)); g.rotate(a); g.drawImage(spr.c, -spr.w + 2, -spr.h / 2, spr.w, spr.h); g.restore();
     if (p.full) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(p.x - Math.cos(a) * 6), Math.round(p.y - Math.sin(a) * 6), 1, 1); }
     return;
+  }
+  if (p.kind === 'crescent') {
+    // charged xiphos wave: a moving crescent of light
+    const k = Math.min(1, p.life / 0.3);
+    g.globalAlpha = 0.85 * k; g.fillStyle = p.color; g.beginPath();
+    g.arc(p.x, p.y, p.r, a - 1.1, a + 1.1); g.arc(p.x - Math.cos(a) * p.r * 0.35, p.y - Math.sin(a) * p.r * 0.35, p.r * 0.92, a + 1.1, a - 1.1, true); g.fill();
+    g.globalAlpha = 0.9 * k; g.fillStyle = '#ffffff'; g.beginPath();
+    g.arc(p.x, p.y, p.r * 0.96, a - 0.7, a + 0.7); g.arc(p.x - Math.cos(a) * p.r * 0.15, p.y - Math.sin(a) * p.r * 0.15, p.r * 0.92, a + 0.7, a - 0.7, true); g.fill();
+    g.globalAlpha = 1; return;
+  }
+  if (p.kind === 'sunbeam') {
+    // Apollo's arrow: a long golden streak with a white core
+    g.save(); g.translate(rp(p.x), rp(p.y)); g.rotate(a);
+    g.globalAlpha = 0.5; g.fillStyle = p.color; g.fillRect(-46, -p.r / 2, 50, p.r);
+    g.globalAlpha = 1; g.fillStyle = '#ffffff'; g.fillRect(-30, -p.r / 5, 34, Math.max(1, p.r / 2.5));
+    g.restore(); return;
   }
   if (p.kind === 'wave') { g.globalAlpha = 0.7; g.fillStyle = p.color; g.save(); g.translate(p.x, p.y); g.rotate(a); g.fillRect(-2, -8, 4, 16); g.restore(); g.globalAlpha = 1; return; }
   const r = Math.max(1, Math.round(p.r));
