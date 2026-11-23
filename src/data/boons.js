@@ -82,11 +82,11 @@ export const BOONS = [
   { id: 'c_phalanx', aspect: 'storm', weapon: 'spear', name: 'Двойной укол', max: 1, desc: () => 'Каждый укол копья бьёт дважды.' },
   { id: 'c_reflect', aspect: 'frost', weapon: 'aspis', name: 'Отражённая медь', max: 1, desc: () => 'Щит возвращает заблокированные снаряды во врагов.' },
   { id: 'c_labrys', aspect: 'blood', weapon: 'labrys', name: 'Кровь лабиринта', max: 1, desc: () => 'Вращающий финишер лабриса затягивает врагов и накладывает 3 раны яда.' },
-  { id: 'c_execute', aspect: 'shadow', weapon: 'pelekys', name: 'Плаха', max: 1, desc: () => 'Порог казни пелекуса выше на 15%, казнь лечит 8 здоровья.' },
+  { id: 'c_execute', aspect: 'shadow', weapon: 'pelekys', name: 'Плаха', max: 1, desc: () => 'Порог казни пелекуса выше на 15%, казнь лечит четверть сердца.' },
   { id: 'c_titan', aspect: 'fire', weapon: 'cleaver', name: 'Вес титана', max: 1, desc: () => 'Каждый удар тесака ломает стойку: враг ошеломлён.' },
   // ---------- КЛЯТВЫ СТИКСА ----------
   { id: 'p_glass', aspect: 'pact', pact: true, max: 1, name: 'Пята Ахилла', desc: () => '+50% урона. Максимум 3 сердца.', stat: (s) => { s.dmgMul *= 1.5; s.maxHp = Math.min(s.maxHp, 3); } },
-  { id: 'p_blood', aspect: 'pact', pact: true, max: 1, name: 'Печень Прометея', desc: () => 'Атаки и заряд не тратят выносливость. Каждые 20 атак стоят сердце (отмщением можно вернуть).', stat: (s) => { s.staFree = true; s.hpCost = 1; } },
+  { id: 'p_blood', aspect: 'pact', pact: true, max: 1, name: 'Печень Прометея', desc: () => 'Атаки и заряд не тратят выносливость. Каждые 20 атак стоят сердце.', stat: (s) => { s.staFree = true; s.hpCost = 1; } },
   { id: 'p_mad', aspect: 'pact', pact: true, max: 1, name: 'Безумие Геры', desc: () => '+25% скорости атаки и бега. Враги быстрее на 20%.', stat: (s) => { s.atkSpeed *= 1.25; s.speed *= 1.25; s.enemySpeed *= 1.2; } },
   { id: 'p_gold', aspect: 'pact', pact: true, max: 1, name: 'Золото Мидаса', desc: () => '+100% пепла и находок. У врагов +25% здоровья.', stat: (s) => { s.ashMul += 1; s.findMul += 1; s.enemyHp *= 1.25; } },
   { id: 'p_vow', aspect: 'pact', pact: true, max: 1, name: 'Чаша Тантала', desc: () => '−1 чаша нектара навсегда. +35% урона.', stat: (s) => { s.flasks -= 1; s.dmgMul *= 1.35; } },

@@ -62,7 +62,7 @@ const atkRate = (P) => {
   let r = P.s.atkSpeed;
   if (P.rageT > 0) r *= 1.4;
   if (P.s.leg.c_medium && P.hp <= 2) r *= 1.25;
-  if (P.s.roots.rage && P.hp < P.s.maxHp * 0.4) r *= 1.25;
+  if (P.s.roots.rage && P.hp <= 2) r *= 1.25;
   return r;
 };
 

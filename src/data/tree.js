@@ -61,7 +61,7 @@ export const TREE = [
   // ---------- MOIRAI: staff, boons & fate ----------
   N('r_rally', 'root', 'Нить Немезиды', 'blood', 3, 45, [0.14, 0], null, (r) => `+${15 * r}% отмщения`, (s, r) => { s.rallyEff *= 1 + 0.15 * r; }),
   N('m_staff', 'root', 'Тайна Гекаты', 'orb', 1, 100, [0.27, 1], 'r_rally', unlockDesc('Посох'), (s) => { s.unlocked.staff = true; }, 'staff'),
-  N('r_reroll', 'root', 'Жребий Лахесис', 'dice', 3, 90, [0.27, -1], 'r_rally', (r) => `+${r} переброс даров за этаж`, (s, r) => { s.rerolls += r; }),
+  N('r_reroll', 'root', 'Жребий Лахесис', 'dice', 3, 90, [0.27, -1], 'r_rally', (r) => `+${r} переброс даров за забег`, (s, r) => { s.rerolls += r; }),
   N('r_sight', 'root', 'Око Клото', 'shadow', 1, 220, [0.42, -1], 'r_reroll', () => 'Выбор из 4 даров вместо 3', (s) => { s.cards = Math.max(s.cards, 4); }),
   N('r_heal', 'root', 'Пир победителя', 'heart', 3, 70, [0.42, 1], 'm_staff', (r) => `Каждое ${[0, 24, 18, 14][r]}-е убийство лечит сердце`, (s, r) => { s.killHeal += 1 / [0, 24, 18, 14][r]; }),
   N('r_echo', 'root', 'Память Мнемосины', 'ash', 1, 120, [0.6, 0], 'r_rally', () => 'При смерти в Древо уходит 75% пепла, а не 50%', (s) => { s.deathKeep = 0.75; }),

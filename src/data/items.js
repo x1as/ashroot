@@ -93,7 +93,7 @@ export const AFFIX_POOL = {
 
 // relics always carry one unique power
 export const RELICS = {
-  phoenix: { name: 'Перо Феникса', desc: 'Раз за этаж смертельный удар оставляет 1 HP.', apply: (s) => { s.unstoppable = true; } },
+  phoenix: { name: 'Перо Феникса', desc: 'Раз за глубину смертельный удар оставляет 1 сердце.', apply: (s) => { s.unstoppable = true; } },
   hourglass: { name: 'Песок Хроноса', desc: 'Идеальный перекат: замедление вдвое дольше, окно +0.03 с.', apply: (s) => { s.slowmo *= 2; s.perfectWindow += 0.03; } },
   fang: { name: 'Зуб дракона Кадма', desc: 'Криты накладывают 2 раны яда.', apply: (s) => { s.critBleed = 2; } },
   ember: { name: 'Нартекс Прометея', desc: 'Перекат оставляет огненный след: огонь, украденный у богов.', apply: (s) => { s.emberTrail = true; } },
@@ -110,7 +110,7 @@ export const ROOTS = {
   bark: { slot: 'gear', name: 'Корень Дафны', desc: 'Первый удар в каждом зале поглощается.' },
   sap: { slot: 'gear', name: 'Корень амброзии', desc: 'Фляга даёт +30% урона на 6 с.' },
   wind: { slot: 'gear', name: 'Корень Зефира', desc: '−25% цены переката, окно идеального переката +0.03 с.' },
-  rage: { slot: 'gear', name: 'Корень Ареса', desc: 'Ниже 40% HP: +25% скорости атаки.' },
+  rage: { slot: 'gear', name: 'Корень Ареса', desc: 'На двух сердцах и меньше: +25% скорости атаки.' },
 };
 
 export const ELEMENTS = ['blood', 'fire', 'frost', 'storm', 'shadow'];
