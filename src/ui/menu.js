@@ -299,8 +299,13 @@ export function renderMenu(ctx) {
   const dpr = G.view.dpr;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   ctx.font = `400 ${Math.round(30 * dpr)}px "Forum", Georgia, serif`;
+  // the game title sits over the top-left of the canvas: a branch name that would land on it drops below it
+  const head = document.querySelector('#menu .brand')?.getBoundingClientRect();
   for (const br of BR_ORDER) {
-    const [tx, ty] = BR[br][2], X = (tx + ox) * s, Y = (ty + (ty < 60 ? -14 : 20) + oy) * s;
+    const [tx, ty] = BR[br][2], X = (tx + ox) * s;
+    let Y = (ty + (ty < 60 ? -14 : 20) + oy) * s;
+    const halfW = ctx.measureText(BRANCHES[br].name).width / 2 + 8 * dpr;
+    if (head && X - halfW < head.right * dpr && X + halfW > head.left * dpr && Y - 20 * dpr < head.bottom * dpr) Y = head.bottom * dpr + 26 * dpr;
     ctx.lineWidth = 6 * dpr; ctx.strokeStyle = 'rgba(7,5,12,0.9)'; ctx.strokeText(BRANCHES[br].name, X, Y);
     ctx.fillStyle = BRANCHES[br].color; ctx.fillText(BRANCHES[br].name, X, Y);
   }

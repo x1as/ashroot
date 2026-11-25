@@ -1,9 +1,5 @@
-// Settings overlay: test codes typed by the player, and a full progress reset (two-step confirm).
-// Codes (case-insensitive, Latin or Russian):
-//   OLYMPUS / ОЛИМП  — everything: full tree, 50 000 ash, 999 of every resource, every item (divine +10, titanic weapons, all relics)
-//   ASHES / ПЕПЕЛ    — +10 000 ash          TREE / ДРЕВО   — every tree node maxed
-//   FORGE / КУЗНЯ    — 999 of every resource ARMORY / АРСЕНАЛ — every item type, divine +10 (+ titanic weapons, all relics)
-//   GOD / БОГ        — immortality on/off (saved)
+// Settings overlay: promo codes and a full progress reset (two-step confirm).
+// Codes are stored only as hashes: neither the source nor the published bundle reveals them.
 import { G } from '../game/state.js';
 import { TREE } from '../data/tree.js';
 import { BASES, RESOURCES, RELICS } from '../data/items.js';
@@ -30,20 +26,24 @@ function armory(save) {
   return inv.items.length;
 }
 
-const CODES = {
-  OLYMPUS: (s) => { maxTree(s); s.ash += 50000; giveRes(s, 999); armory(s); return 'Олимп открыт: всё древо, 50 000 пепла, 999 каждого ресурса и все предметы в сумке.'; },
-  ASHES: (s) => { s.ash += 10000; return '+10 000 пепла.'; },
-  TREE: (s) => { maxTree(s); return 'Древо изучено полностью: все оружия открыты.'; },
-  FORGE: (s) => { giveRes(s, 999); return '+999 каждого ресурса.'; },
-  ARMORY: (s) => { armory(s); return 'Все предметы добавлены: божественные +10, титанические оружия, все реликвии.'; },
-  GOD: (s) => { s.cheatGod = !s.cheatGod; G.godmode = s.cheatGod; return s.cheatGod ? 'Бессмертие включено.' : 'Бессмертие выключено.'; },
+const REWARDS = {
+  all: (s) => { maxTree(s); s.ash += 50000; giveRes(s, 999); armory(s); return 'Олимп открыт: всё древо, 50 000 пепла, 999 каждого ресурса и все предметы в сумке.'; },
+  ash: (s) => { s.ash += 10000; return '+10 000 пепла.'; },
+  tree: (s) => { maxTree(s); return 'Древо изучено полностью: все оружия открыты.'; },
+  res: (s) => { giveRes(s, 999); return '+999 каждого ресурса.'; },
+  items: (s) => { armory(s); return 'Все предметы добавлены: божественные +10, титанические оружия, все реликвии.'; },
+  god: (s) => { s.cheatGod = !s.cheatGod; G.godmode = s.cheatGod; return s.cheatGod ? 'Бессмертие включено.' : 'Бессмертие выключено.'; },
 };
-const ALIAS = { 'ОЛИМП': 'OLYMPUS', 'ПЕПЕЛ': 'ASHES', 'ДРЕВО': 'TREE', 'КУЗНЯ': 'FORGE', 'АРСЕНАЛ': 'ARMORY', 'БОГ': 'GOD' };
+// cyrb53 hash of the upper-cased code (Latin and Russian spellings) -> reward
+const HASHES = {
+  '1xxu1qi472d': 'all', vibrdynd42: 'all', '16clbay9hy5': 'ash', '1cq291hcv0s': 'ash', frntw2evi3: 'tree', g5m7glgzi3: 'tree',
+  '2it5hnrp3h': 'res', '2emshkw6yn': 'res', '1djy4ba7h20': 'items', v0hjpcsgs4: 'items', '5at5dz468a': 'god', caqbb4qujl: 'god',
+};
+const cyrb53 = (str, seed = 1808) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36); };
 
 export function applyCode(raw) {
-  const k = String(raw || '').trim().toUpperCase();
-  const fn = CODES[ALIAS[k] || k];
-  if (!fn) return { ok: false, msg: 'Такого кода нет.' };
+  const fn = REWARDS[HASHES[cyrb53(String(raw || '').trim().toUpperCase())]];
+  if (!fn) return { ok: false, msg: 'Промокод не подошёл.' };
   const msg = fn(G.save);
   writeSave(G.save);
   return { ok: true, msg };

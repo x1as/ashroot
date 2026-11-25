@@ -7,7 +7,9 @@
     "dev": "node tools/serve.mjs",
     "balance": "node tools/balance.mjs",
     "build": "node tools/build.mjs",
-    "deploy": "node tools/deploy.mjs"
+    "deploy": "node tools/deploy.mjs",
+    "shots": "node tools/shots.mjs",
+    "icons": "python tools/icon.py"
   },
   "devDependencies": {
     "esbuild": "0.24.2"
